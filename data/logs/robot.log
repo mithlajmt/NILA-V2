@@ -1,0 +1,22 @@
+2025-07-28 01:16:16,047 - __main__ - INFO - Mode: development
+2025-07-28 01:16:16,049 - __main__ - INFO - Voice Provider: google
+2025-07-28 02:26:45,293 - __main__ - INFO - Mode: development
+2025-07-28 02:26:45,294 - __main__ - INFO - Voice Provider: google
+2025-07-28 02:28:28,105 - src.services.speech.text_to_speech - INFO - 🔊 Text-to-Speech service initialized
+2025-07-28 02:28:28,105 - src.core.robot_controller - INFO - 🤖 Robot Controller initialized (Step 1: Speaking only)
+2025-07-28 02:28:28,106 - __main__ - INFO - 🤖 STEP 1: Robot Greeting Test Starting...
+2025-07-28 02:28:28,106 - __main__ - INFO - Mode: development
+2025-07-28 02:28:28,107 - __main__ - INFO - Voice Provider: google
+2025-07-28 02:28:28,108 - src.core.robot_controller - INFO - 🚀 Robot starting Step 1...
+2025-07-28 02:28:28,109 - src.core.robot_controller - INFO - 🤖 Speaking: Hello! I am your robot assistant. Step 1 is working perfectly - I can speak!
+2025-07-28 02:28:28,109 - src.services.speech.text_to_speech - INFO - 🔊 Speaking: Hello! I am your robot assistant. Step 1 is working perfectly - I can speak!
+2025-07-28 02:28:35,856 - src.core.robot_controller - INFO - ✅ Step 1 complete! Robot spoke greeting successfully.
+2025-07-28 02:30:50,108 - src.services.speech.text_to_speech - INFO - 🔊 Text-to-Speech service initialized
+2025-07-28 02:30:50,109 - src.core.robot_controller - INFO - 🤖 Robot Controller initialized (Step 1: Speaking only)
+2025-07-28 02:30:50,109 - __main__ - INFO - 🤖 STEP 1: Robot Greeting Test Starting...
+2025-07-28 02:30:50,109 - __main__ - INFO - Mode: development
+2025-07-28 02:30:50,109 - __main__ - INFO - Voice Provider: google
+2025-07-28 02:30:50,111 - src.core.robot_controller - INFO - 🚀 Robot starting Step 1...
+2025-07-28 02:30:50,111 - src.core.robot_controller - INFO - 🤖 Speaking: Hello! I am your robot assistant. Step 1 is working perfectly - I can speak!
+2025-07-28 02:30:50,112 - src.services.speech.text_to_speech - INFO - 🔊 Speaking: Hello! I am your robot assistant. Step 1 is working perfectly - I can speak!
+2025-07-28 02:30:58,820 - src.core.robot_controller - INFO - ✅ Step 1 complete! Robot spoke greeting successfully.
