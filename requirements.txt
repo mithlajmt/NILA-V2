@@ -14,6 +14,9 @@ torch==2.1.0
 torchaudio==2.1.0
 numpy==1.24.3
 
-# Future steps will add:
-# openai==1.3.0
-# google-cloud-speech==2.21.0
+# Step 3 - LLM Integration (Conversation Intelligence)
+openai==1.12.0
+anthropic==0.8.0
+
+# Future additions:
+# google-generativeai==0.3.0

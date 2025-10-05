@@ -5,9 +5,10 @@ import signal
 from typing import Optional
 from src.services.speech.text_to_speech import TextToSpeech
 from src.services.speech.speech_recognizer import SpeechRecognizer
+from src.services.llm.llm_service import LLMService
 
 class RobotController:
-    """Enhanced Robot Controller - Step 2: Speaking + Voice Recording with improvements"""
+    """Enhanced Robot Controller - Step 3: Speaking + Listening + AI Conversations"""
     
     def __init__(self, settings):
         self.settings = settings
@@ -20,21 +21,31 @@ class RobotController:
             'messages_received': 0,
             'successful_transcriptions': 0,
             'failed_transcriptions': 0,
+            'llm_responses': 0,
+            'llm_failures': 0,
             'start_time': None
         }
         
-        # Step 2: Initialize BOTH services
+        # Initialize services
         self.text_to_speech = TextToSpeech(settings)
         self.speech_recognizer = SpeechRecognizer(settings)
+        
+        # Step 3: Initialize LLM service
+        try:
+            self.llm_service = LLMService(settings)
+            self.llm_enabled = True
+            self.logger.info("🧠 LLM Service enabled - AI responses active!")
+        except Exception as e:
+            self.logger.warning(f"⚠️ LLM Service initialization failed: {e}")
+            self.logger.info("   Robot will run without AI responses (echo mode)")
+            self.llm_service = None
+            self.llm_enabled = False
         
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
         
-        # Future steps will add:
-        # self.llm_service = LLMService(settings)
-        # self.conversation_manager = ConversationManager(self.llm_service)
-        
-        self.logger.info("🤖 Enhanced Robot Controller initialized (Step 2: Speaking + Recording)")
+        mode = "AI Conversations" if self.llm_enabled else "Echo Mode"
+        self.logger.info(f"🤖 Enhanced Robot Controller initialized - {mode}")
     
     def _setup_signal_handlers(self):
         """Setup graceful shutdown on CTRL+C"""
@@ -46,17 +57,17 @@ class RobotController:
         signal.signal(signal.SIGTERM, signal_handler)
     
     async def start(self):
-        """Start the robot - Step 2: Speak greeting then listen"""
+        """Start the robot - Step 3: Speak greeting, listen, and respond with AI"""
         self.is_running = True
         self.conversation_active = True
         self.stats['start_time'] = time.time()
         
-        self.logger.info("🚀 Robot starting Step 2...")
+        self.logger.info("🚀 Robot starting Step 3...")
         
-        # Step 2: Speak greeting
+        # Step 3: Speak greeting
         await self._speak_greeting()
         
-        # Step 2: Enhanced voice recording loop
+        # Step 3: AI conversation loop
         consecutive_failures = 0
         max_consecutive_failures = 3
         
@@ -80,8 +91,8 @@ class RobotController:
                         await self._handle_exit()
                         break
                     
-                    # Acknowledge receipt
-                    await self._acknowledge_message()
+                    # Step 3: Get AI response and show it (no TTS yet)
+                    await self._handle_conversation(user_input)
                     
                 else:
                     self.stats['failed_transcriptions'] += 1
@@ -89,7 +100,6 @@ class RobotController:
                     
                     if consecutive_failures >= max_consecutive_failures:
                         print(f"\n⚠️ {consecutive_failures} consecutive failures. Check microphone!")
-                        await self.text_to_speech.speak("I'm having trouble hearing you. Please check your microphone.")
                         consecutive_failures = 0
                     else:
                         print("⚠️ No speech detected. Try again!")
@@ -106,15 +116,55 @@ class RobotController:
         
         # Print final statistics
         self._print_final_stats()
-        self.logger.info("✅ Step 2 complete!")
+        self.logger.info("✅ Step 3 complete!")
+    
+    async def _handle_conversation(self, user_input: str):
+        """Handle conversation - Get AI response and display"""
+        if not self.llm_enabled or self.llm_service is None:
+            # Echo mode fallback
+            print(f"\n🤖 ROBOT (Echo Mode): You said '{user_input}'")
+            return
+        
+        try:
+            print(f"\n🧠 Generating AI response...")
+            
+            # Get AI response (pass language if detected by Whisper)
+            # For now, we'll detect language from the speech recognizer context if available
+            language = None  # TODO: Get from speech recognizer if Whisper is used
+            
+            ai_response = await self.llm_service.get_response(user_input, language)
+            
+            if ai_response:
+                self.stats['llm_responses'] += 1
+                
+                # Display AI response
+                print("\n" + "="*60)
+                print("🤖 ROBOT RESPONSE:")
+                print("="*60)
+                print(f"{ai_response}")
+                print("="*60)
+                
+                # TODO: In next step, we'll add TTS here
+                # await self.text_to_speech.speak(ai_response)
+                
+            else:
+                self.stats['llm_failures'] += 1
+                print("❌ Failed to generate response")
+                
+        except Exception as e:
+            self.stats['llm_failures'] += 1
+            self.logger.error(f"❌ Conversation error: {e}")
+            print(f"❌ Error: {e}")
     
     def _print_status_header(self):
         """Print status header for each listening cycle"""
         print("\n" + "="*60)
-        print("🎯 ROBOT LISTENING MODE")
+        print("🎯 ROBOT LISTENING MODE" + (" - AI ACTIVE 🧠" if self.llm_enabled else " - ECHO MODE"))
         print("="*60)
         print(f"💬 Messages received: {self.stats['messages_received']}")
         print(f"✅ Successful: {self.stats['successful_transcriptions']} | ❌ Failed: {self.stats['failed_transcriptions']}")
+        if self.llm_enabled:
+            print(f"🧠 AI Responses: {self.stats['llm_responses']} | ❌ AI Failures: {self.stats['llm_failures']}")
         if self.stats['start_time']:
             uptime = time.time() - self.stats['start_time']
             print(f"⏱️  Uptime: {int(uptime)}s")
@@ -141,15 +191,10 @@ class RobotController:
         print("\n" + "="*60)
         print("👋 Goodbye! Shutting down...")
         print("="*60)
-        await self.text_to_speech.speak("Goodbye! Thank you for talking with me.")
+        # TODO: Add TTS goodbye in next step
+        # await self.text_to_speech.speak("Goodbye! Thank you for talking with me.")
         self.conversation_active = False
         self.is_running = False
-    
-    async def _acknowledge_message(self):
-        """Acknowledge that message was received (optional feedback)"""
-        # For now, just a visual confirmation
-        # In Step 3, this will be replaced with LLM response
-        print("✅ Message received and logged!")
     
     def _print_final_stats(self):
         """Print final statistics before shutdown"""
@@ -159,6 +204,16 @@ class RobotController:
         print(f"💬 Total messages: {self.stats['messages_received']}")
         print(f"✅ Successful transcriptions: {self.stats['successful_transcriptions']}")
         print(f"❌ Failed transcriptions: {self.stats['failed_transcriptions']}")
+        
+        if self.llm_enabled:
+            print(f"🧠 AI Responses: {self.stats['llm_responses']}")
+            print(f"❌ AI Failures: {self.stats['llm_failures']}")
+            
+            # Show LLM stats
+            if self.llm_service:
+                llm_stats = self.llm_service.get_stats()
+                print(f"📊 Total tokens used: {llm_stats.get('total_tokens_used', 0)}")
+                print(f"💰 Estimated cost: ${llm_stats.get('estimated_cost', 0):.4f}")
         
         if self.stats['start_time']:
             duration = time.time() - self.stats['start_time']
@@ -177,7 +232,11 @@ class RobotController:
     
     async def _speak_greeting(self):
         """Speak initial greeting"""
-        greeting = "Hello! I am your enhanced robot. I can now intelligently detect when you start and stop speaking! Try talking to me naturally."
+        if self.llm_enabled:
+            greeting = "Hello! I am your AI robot. I can now have intelligent conversations with you! Try asking me anything!"
+        else:
+            greeting = "Hello! I am your robot. I'm running in echo mode - I'll repeat what you say."
+        
         self.logger.info(f"Speaking: {greeting}")
         await self.text_to_speech.speak(greeting)
         
@@ -204,5 +263,8 @@ class RobotController:
         
         if hasattr(self, 'speech_recognizer'):
             self.speech_recognizer.cleanup()
+        
+        if hasattr(self, 'llm_service') and self.llm_service:
+            self.llm_service.cleanup()
         
         self.logger.info("✅ Cleanup complete")
