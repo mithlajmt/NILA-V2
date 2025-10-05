@@ -3,12 +3,12 @@ import logging
 import time
 import signal
 from typing import Optional
-from src.services.speech.text_to_speech import TextToSpeech
+from src.services.tts.tts_service import TTSService
 from src.services.speech.speech_recognizer import SpeechRecognizer
 from src.services.llm.llm_service import LLMService
 
 class RobotController:
-    """Enhanced Robot Controller - Step 3: Speaking + Listening + AI Conversations"""
+    """Enhanced Robot Controller - Step 4: Speaking + Listening + AI + Multilingual TTS"""
     
     def __init__(self, settings):
         self.settings = settings
@@ -27,7 +27,7 @@ class RobotController:
         }
         
         # Initialize services
-        self.text_to_speech = TextToSpeech(settings)
+        self.text_to_speech = TTSService(settings)
         self.speech_recognizer = SpeechRecognizer(settings)
         
         # Step 3: Initialize LLM service
@@ -144,8 +144,9 @@ class RobotController:
                 print(f"{ai_response}")
                 print("="*60)
                 
-                # TODO: In next step, we'll add TTS here
-                # await self.text_to_speech.speak(ai_response)
+                # Speak the AI response!
+                print("\n🔊 Speaking response...")
+                await self.text_to_speech.speak(ai_response)
                 
             else:
                 self.stats['llm_failures'] += 1
@@ -191,8 +192,7 @@ class RobotController:
         print("\n" + "="*60)
         print("👋 Goodbye! Shutting down...")
         print("="*60)
-        # TODO: Add TTS goodbye in next step
-        # await self.text_to_speech.speak("Goodbye! Thank you for talking with me.")
+        await self.text_to_speech.speak("Goodbye! Thank you for talking with me.")
         self.conversation_active = False
         self.is_running = False
     
