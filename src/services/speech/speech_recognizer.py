@@ -25,6 +25,11 @@ class SpeechRecognizer:
             with self.microphone as source:
                 self.logger.info("Calibrating microphone...")
                 self.recognizer.adjust_for_ambient_noise(source, duration=1)
+
+                 # Fine-tune for faster response
+                self.recognizer.energy_threshold = 300
+                self.recognizer.pause_threshold = 0.5
+                self.recognizer.phrase_threshold = 0.3
                 self.logger.info("Microphone calibrated")
         except Exception as e:
             self.logger.error(f"Calibration failed: {e}")
