@@ -6,13 +6,13 @@ pydantic-settings==2.1.0
 python-dotenv==1.0.0
 SpeechRecognition==3.10.0
 pyaudio==0.2.14
-webrtcvad==2.0.10
+# webrtcvad==2.0.10
 
 # Advanced Speech Recognition (Multilingual - Malayalam + English)
 openai-whisper==20231117
-torch==2.1.0
-torchaudio==2.1.0
-numpy==1.24.3
+torch==2.2.0
+torchaudio==2.2.0
+numpy>=1.26.0
 
 # Step 3 - LLM Integration (Conversation Intelligence)
 openai==1.12.0

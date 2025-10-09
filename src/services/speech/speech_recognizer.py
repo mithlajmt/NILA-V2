@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import speech_recognition as sr
-import webrtcvad
+# import webrtcvad
 import collections
 import pyaudio
 from typing import Optional, List
@@ -20,7 +20,7 @@ class SpeechRecognizer:
         self.microphone = sr.Microphone()
         
         # Voice Activity Detection (WebRTC VAD)
-        self.vad = webrtcvad.Vad(2)  # Aggressiveness: 0-3 (2 is moderate)
+        # self.vad = webrtcvad.Vad(2)  # Aggressiveness: 0-3 (2 is moderate)
         
         # Speech detection settings
         self.frame_duration_ms = 30  # Frame duration in ms (10, 20, or 30)
@@ -86,17 +86,19 @@ class SpeechRecognizer:
                 # Store ambient energy level
                 self.ambient_noise_samples.append(self.recognizer.energy_threshold)
                 
-                # Fine-tune for responsive detection
+                # Fine-tune for PROFESSIONAL responsive detection
                 # Use average of recent calibrations if available
                 if len(self.ambient_noise_samples) > 0:
                     avg_threshold = sum(self.ambient_noise_samples) / len(self.ambient_noise_samples)
-                    self.recognizer.energy_threshold = max(300, avg_threshold * 1.2)
+                    # INCREASED threshold to avoid false triggers
+                    self.recognizer.energy_threshold = max(400, avg_threshold * 1.3)
                 else:
-                    self.recognizer.energy_threshold = 300
+                    self.recognizer.energy_threshold = 400  # Higher default
                 
-                self.recognizer.pause_threshold = 0.6  # Silence duration to consider phrase complete
-                self.recognizer.phrase_threshold = 0.3  # Minimum seconds of speech
-                self.recognizer.non_speaking_duration = 0.5  # Seconds of silence to stop
+                # PROFESSIONAL SETTINGS - Better accuracy, no false recordings
+                self.recognizer.pause_threshold = 0.8  # Silence duration to consider phrase complete
+                self.recognizer.phrase_threshold = 0.3  # Minimum speech (higher = less sensitive to noise)
+                self.recognizer.non_speaking_duration = 0.8  # Seconds of silence to stop
                 
                 self.last_calibration_time = time.time()
                 
@@ -138,29 +140,29 @@ class SpeechRecognizer:
         return None
     
     def _capture_audio_with_vad(self, timeout: int) -> Optional[sr.AudioData]:
-        """Capture audio using Voice Activity Detection"""
+        """Capture audio with PROFESSIONAL Voice Activity Detection - stops when you stop talking!"""
         try:
-            print("🎯 Listening... (Speak naturally, I'll detect when you start and stop)")
+            print("🎯 Listening... (Speak now!)")
             
-            # Use enhanced listening with better speech detection
+            # Use dynamic listening with automatic silence detection
             with self.microphone as source:
-                # Wait for speech to start
                 start_time = time.time()
                 print("⏳ Waiting for speech...")
                 
                 try:
+                    # FIXED: Max 20 seconds recording + better noise filtering
                     audio = self.recognizer.listen(
                         source,
-                        timeout=timeout,
-                        phrase_time_limit=15,  # Max 15 seconds per phrase
+                        timeout=timeout,  # Max time to WAIT for speech to START (30s)
+                        phrase_time_limit=20,  # MAX 20 seconds of recording!
                     )
                     
                     elapsed = time.time() - start_time
-                    print(f"✅ Got it! ({elapsed:.1f}s) Processing...")
+                    print(f"✅ Recording complete! ({elapsed:.1f}s) - Processing...")
                     return audio
                     
                 except sr.WaitTimeoutError:
-                    print("⏱️ No speech detected within timeout")
+                    print("⏱️ Timeout - No speech detected. Try speaking louder.")
                     return None
                     
         except Exception as e:
