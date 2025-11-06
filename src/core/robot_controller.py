@@ -232,7 +232,7 @@ class RobotController:
     
     async def _speak_greeting(self):
         """Speak initial greeting"""
-        greeting = "Hey welcome, I'm Nila. That's it."
+        greeting = "Hey welcome, I'm Nila."
         
         self.logger.info(f"Speaking: {greeting}")
         await self.text_to_speech.speak(greeting)
