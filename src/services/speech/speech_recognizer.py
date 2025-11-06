@@ -3,264 +3,131 @@ import logging
 import speech_recognition as sr
 import webrtcvad
 import collections
-import pyaudio
-from typing import Optional, List
 import time
-import io
+from typing import Optional
+
+from src.services.speech.base_stt_provider import STTResult, BaseSTTProvider
+from src.services.speech.providers.google_stt_provider import GoogleSTTProvider
 
 class SpeechRecognizer:
-    """Advanced speech recognition with VAD and multi-provider support (Google + Whisper)"""
-    
+    """Advanced speech recognition with VAD + pluggable providers (Google / Whisper)"""
+
     def __init__(self, settings):
         self.settings = settings
         self.logger = logging.getLogger(__name__)
-        
-        # Initialize recognizer
+
+        # SR core
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
-        
-        # Voice Activity Detection (WebRTC VAD)
-        self.vad = webrtcvad.Vad(2)  # Aggressiveness: 0-3 (2 is moderate)
-        
-        # Speech detection settings
-        self.frame_duration_ms = 30  # Frame duration in ms (10, 20, or 30)
-        self.padding_duration_ms = 300  # Silence padding before/after speech
-        self.speech_start_frames = 10  # Frames to confirm speech started
-        self.speech_end_frames = 20  # Frames to confirm speech ended
-        
-        # Calibration tracking
+
+        # VAD
+        self.vad = webrtcvad.Vad(2)
+
+        # Calibration helpers
         self.last_calibration_time = 0
-        self.calibration_interval = 300  # Re-calibrate every 5 minutes
+        self.calibration_interval = 300  # seconds
         self.ambient_noise_samples = collections.deque(maxlen=10)
-        
-        # Whisper model (lazy loading)
-        self.whisper_model = None
-        self.whisper_available = False
-        
-        # Check which provider to use
-        self.provider = settings.SPEECH_PROVIDER.lower()  # "google" or "whisper"
-        
-        # Initialize Whisper if selected
-        if self.provider == "whisper":
-            self._init_whisper()
-        
-        # Initial calibration
+
+        # Provider selection
+        self.provider_name = settings.SPEECH_PROVIDER.lower()  # "google" | "whisper"
+        self.provider: Optional[BaseSTTProvider] = None
+        self.last_detected_language: Optional[str] = None
+
+        # init provider
+        self._init_provider()
+
+        # initial calibration
         self._calibrate_microphone()
-        
-        provider_name = "Whisper (Multilingual)" if self.provider == "whisper" else "Google Speech API"
-        self.logger.info(f"🎙️ Advanced Speech Recognition initialized with VAD + {provider_name}")
-    
-    def _init_whisper(self):
-        """Initialize Whisper model (lazy loading)"""
-        try:
-            import whisper
-            
-            model_size = self.settings.WHISPER_MODEL  # tiny, base, small, medium, large
-            device = self.settings.WHISPER_DEVICE  # cpu or cuda
-            
-            self.logger.info(f"📥 Loading Whisper model '{model_size}' on {device.upper()}...")
-            self.whisper_model = whisper.load_model(model_size, device=device)
-            self.whisper_available = True
-            
-            self.logger.info(f"✅ Whisper model loaded successfully!")
-            self.logger.info(f"   Supports: Malayalam (ml), English (en), and 97+ other languages")
-            
-        except ImportError:
-            self.logger.warning("⚠️ Whisper not installed. Run: pip install openai-whisper torch torchaudio")
-            self.logger.info("   Falling back to Google Speech Recognition")
-            self.provider = "google"
-            self.whisper_available = False
-        except Exception as e:
-            self.logger.error(f"❌ Failed to load Whisper: {e}")
-            self.logger.info("   Falling back to Google Speech Recognition")
-            self.provider = "google"
-            self.whisper_available = False
-    
+        self.logger.info(f"🎙️ STT ready with provider: {self.provider_name}")
+
+    # ---------- provider init ----------
+    def _init_provider(self):
+        if self.provider_name == "whisper":
+            try:
+                import whisper
+                model = whisper.load_model(self.settings.WHISPER_MODEL, device=self.settings.WHISPER_DEVICE)
+                from src.services.speech.providers.whisper_stt_provider import WhisperSTTProvider
+                lang = None if self.settings.WHISPER_LANGUAGE in ("auto", "", None) else self.settings.WHISPER_LANGUAGE
+                self.provider = WhisperSTTProvider(model=model, language=lang)
+                self.logger.info("🧠 Whisper provider loaded")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Whisper init failed: {e}. Falling back to Google.")
+                self.provider_name = "google"
+                self.provider = GoogleSTTProvider(self.recognizer, default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
+        else:
+            self.provider = GoogleSTTProvider(self.recognizer, default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
+
+    # ---------- calibration ----------
     def _calibrate_microphone(self):
-        """Calibrate microphone for ambient noise with error handling"""
         try:
             with self.microphone as source:
-                self.logger.info("🔊 Calibrating microphone for ambient noise...")
+                self.logger.info("🔊 Calibrating mic...")
                 self.recognizer.adjust_for_ambient_noise(source, duration=1.5)
-                
-                # Store ambient energy level
                 self.ambient_noise_samples.append(self.recognizer.energy_threshold)
-                
-                # Fine-tune for responsive detection
-                # Use average of recent calibrations if available
-                if len(self.ambient_noise_samples) > 0:
-                    avg_threshold = sum(self.ambient_noise_samples) / len(self.ambient_noise_samples)
-                    self.recognizer.energy_threshold = max(300, avg_threshold * 1.2)
+                if self.ambient_noise_samples:
+                    avg = sum(self.ambient_noise_samples) / len(self.ambient_noise_samples)
+                    self.recognizer.energy_threshold = max(300, avg * 1.2)
                 else:
                     self.recognizer.energy_threshold = 300
-                
-                self.recognizer.pause_threshold = 0.6  # Silence duration to consider phrase complete
-                self.recognizer.phrase_threshold = 0.3  # Minimum seconds of speech
-                self.recognizer.non_speaking_duration = 0.5  # Seconds of silence to stop
-                
+                self.recognizer.pause_threshold = 0.6
+                self.recognizer.phrase_threshold = 0.3
+                self.recognizer.non_speaking_duration = 0.5
                 self.last_calibration_time = time.time()
-                
-                self.logger.info(f"✅ Microphone calibrated - Threshold: {int(self.recognizer.energy_threshold)}")
+                self.logger.info(f"✅ Mic calibrated (threshold={int(self.recognizer.energy_threshold)})")
         except Exception as e:
             self.logger.error(f"❌ Calibration failed: {e}")
-            # Set safe defaults
             self.recognizer.energy_threshold = 300
-            self.recognizer.pause_threshold = 0.6
-            self.recognizer.phrase_threshold = 0.3
-    
+
     def _should_recalibrate(self) -> bool:
-        """Check if we need to recalibrate based on time"""
         return (time.time() - self.last_calibration_time) > self.calibration_interval
-    
+
+    # ---------- public API ----------
     async def listen(self, timeout: int = 30) -> Optional[str]:
-        """Listen for speech with VAD and return text"""
         try:
-            # Periodic recalibration
             if self._should_recalibrate():
-                self.logger.info("🔄 Performing periodic recalibration...")
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, self._calibrate_microphone)
-            
+
             self.logger.info("🎯 Ready to listen...")
-            
-            # Run blocking audio capture in thread pool
             loop = asyncio.get_event_loop()
-            audio = await loop.run_in_executor(None, self._capture_audio_with_vad, timeout)
-            
-            if audio:
-                # Run blocking transcription in thread pool
-                text = await loop.run_in_executor(None, self._transcribe_audio, audio)
-                return text
-                
+            audio = await loop.run_in_executor(None, self._capture_blocking, timeout)
+            if not audio:
+                return None
+
+            # transcribe via provider
+            assert self.provider is not None, "STT provider not initialized"
+            result: STTResult = await self.provider.transcribe(audio)
+            self.last_detected_language = result.language
+
+            if result.text:
+                print("✅ Transcribed successfully")
+                return result.text
+            else:
+                if result.error:
+                    print(f"❌ STT error: {result.error}")
+                return None
         except Exception as e:
-            self.logger.error(f"❌ Speech recognition error: {e}")
-        
-        return None
-    
-    def _capture_audio_with_vad(self, timeout: int) -> Optional[sr.AudioData]:
-        """Capture audio using Voice Activity Detection"""
+            self.logger.error(f"❌ listen error: {e}")
+            return None
+
+    def _capture_blocking(self, timeout: int) -> Optional[sr.AudioData]:
         try:
-            print("🎯 Listening... (Speak naturally, I'll detect when you start and stop)")
-            
-            # Use enhanced listening with better speech detection
+            print("🎯 Listening... (Speak naturally)")
             with self.microphone as source:
-                # Wait for speech to start
-                start_time = time.time()
-                print("⏳ Waiting for speech...")
-                
-                try:
-                    audio = self.recognizer.listen(
-                        source,
-                        timeout=timeout,
-                        phrase_time_limit=15,  # Max 15 seconds per phrase
-                    )
-                    
-                    elapsed = time.time() - start_time
-                    print(f"✅ Got it! ({elapsed:.1f}s) Processing...")
-                    return audio
-                    
-                except sr.WaitTimeoutError:
-                    print("⏱️ No speech detected within timeout")
-                    return None
-                    
+                start = time.time()
+                audio = self.recognizer.listen(source, timeout=timeout, phrase_time_limit=15)
+                print(f"✅ Got it! ({time.time()-start:.1f}s) Processing...")
+                return audio
+        except sr.WaitTimeoutError:
+            print("⏱️ No speech within timeout")
+            return None
         except Exception as e:
             self.logger.error(f"❌ Audio capture error: {e}")
             return None
-    
-    def _transcribe_audio(self, audio: sr.AudioData) -> Optional[str]:
-        """Convert audio to text using selected provider (Google or Whisper)"""
-        if self.provider == "whisper" and self.whisper_available:
-            return self._transcribe_with_whisper(audio)
-        else:
-            return self._transcribe_with_google(audio)
-    
-    def _transcribe_with_google(self, audio: sr.AudioData) -> Optional[str]:
-        """Convert audio to text using Google Speech Recognition"""
-        try:
-            print("🔍 Transcribing with Google...")
-            
-            # Try Google Speech Recognition
-            text = self.recognizer.recognize_google(
-                audio, 
-                language="en-IN",  # Indian English
-                show_all=False  # Get only best result
-            )
-            
-            if text:
-                print(f"✅ Transcribed successfully")
-                return text.strip()
-            else:
-                print("⚠️ Empty transcription")
-                return None
-                
-        except sr.UnknownValueError:
-            print("❌ Could not understand the audio - please speak more clearly")
-            return None
-        except sr.RequestError as e:
-            self.logger.error(f"❌ Speech service error: {e}")
-            print("❌ Network error - please check your internet connection")
-            return None
-        except Exception as e:
-            self.logger.error(f"❌ Transcription error: {e}")
-            return None
-    
-    def _transcribe_with_whisper(self, audio: sr.AudioData) -> Optional[str]:
-        """Convert audio to text using Whisper (supports Malayalam + English)"""
-        try:
-            print("🔍 Transcribing with Whisper (Multilingual)...")
-            
-            # Convert audio data to format Whisper expects
-            import numpy as np
-            
-            # Get raw audio data
-            audio_data = audio.get_raw_data(convert_rate=16000, convert_width=2)
-            
-            # Convert to numpy array
-            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-            
-            # Get language setting
-            language = self.settings.WHISPER_LANGUAGE  # "en", "ml", or None for auto-detect
-            
-            # Transcribe with Whisper
-            if language == "auto" or language is None:
-                # Auto-detect language
-                result = self.whisper_model.transcribe(audio_np, fp16=False)
-                detected_lang = result.get('language', 'unknown')
-                print(f"🌍 Detected language: {detected_lang}")
-            else:
-                # Use specified language
-                result = self.whisper_model.transcribe(audio_np, language=language, fp16=False)
-            
-            text = result["text"].strip()
-            
-            if text:
-                print(f"✅ Transcribed successfully")
-                return text
-            else:
-                print("⚠️ Empty transcription")
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"❌ Whisper transcription error: {e}")
-            print(f"❌ Whisper error: {e}")
-            
-            # Fallback to Google if Whisper fails
-            self.logger.info("   Falling back to Google Speech Recognition...")
-            return self._transcribe_with_google(audio)
-    
+
+    def get_last_language(self) -> Optional[str]:
+        return self.last_detected_language
+
     def cleanup(self):
-        """Cleanup resources"""
         self.logger.info("🧽 Cleaning up speech recognizer...")
-        
-        # Unload Whisper model to free memory
-        if self.whisper_model is not None:
-            del self.whisper_model
-            self.whisper_model = None
-            
-            # Try to clear CUDA cache if using GPU
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            except:
-                pass
+        # if whisper was used, provider will be GC'ed; GPU cache handled elsewhere

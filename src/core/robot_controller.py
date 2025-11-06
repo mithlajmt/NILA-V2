@@ -232,20 +232,10 @@ class RobotController:
     
     async def _speak_greeting(self):
         """Speak initial greeting"""
-        if self.llm_enabled:
-            greeting = "Hello! I am your AI robot. I can now have intelligent conversations with you! Try asking me anything!"
-        else:
-            greeting = "Hello! I am your robot. I'm running in echo mode - I'll repeat what you say."
+        greeting = "Hey welcome, I'm Nila. That's it."
         
         self.logger.info(f"Speaking: {greeting}")
         await self.text_to_speech.speak(greeting)
-        
-        # Give user a moment
-        await asyncio.sleep(1)
-        
-        # Additional instructions
-        instructions = "Say exit, quit, or goodbye when you want to stop."
-        await self.text_to_speech.speak(instructions)
         await asyncio.sleep(0.5)
     
     def stop(self):

@@ -9,18 +9,22 @@ pyaudio==0.2.14
 webrtcvad==2.0.10
 
 # Advanced Speech Recognition (Multilingual - Malayalam + English)
-openai-whisper==20231117
-torch==2.1.0
-torchaudio==2.1.0
-numpy==1.24.3
+
+numpy==1.26.4
 
 # Step 3 - LLM Integration (Conversation Intelligence)
-openai==1.12.0
+openai==2.7.1
 anthropic==0.8.0
 
 # Step 4 - Advanced TTS (Multilingual - Malayalam + English)
 google-cloud-texttospeech==2.14.1
 pydub==0.25.1
+
+
+# GOOGLE APIs (we’re moving to these)
+google-cloud-speech==2.27.0
+google-cloud-texttospeech==2.14.1
+google-generativeai==0.3.0  # Gemini (optional but recommended)
 
 # Future additions:
 # google-generativeai==0.3.0

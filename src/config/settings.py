@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     TTS_PITCH: float = Field(default=0.0, env="TTS_PITCH")  # -20.0 to 20.0 (0.0 = normal)
     TTS_VOLUME_GAIN_DB: float = Field(default=0.0, env="TTS_VOLUME_GAIN_DB")  # Volume adjustment in dB
     TTS_LANGUAGE: str = Field(default="auto", env="TTS_LANGUAGE")  # "en", "ml", or "auto" for auto-detect
+    STT_LANGUAGE: str = Field(default="en-IN", env="STT_LANGUAGE")
     
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
