@@ -8,6 +8,7 @@ from typing import Optional
 from .base_tts_provider import BaseTTSProvider
 from .gtts_provider import GTTSProvider
 from .google_cloud_tts_provider import GoogleCloudTTSProvider
+from .openai_tts_provider import OpenAITTSProvider
 
 
 class TTSService:
@@ -30,6 +31,9 @@ class TTSService:
         try:
             if provider_name == "gtts":
                 self.provider = GTTSProvider(self.settings)
+                
+            elif provider_name == "openai":
+                self.provider = OpenAITTSProvider(self.settings)
                 
             elif provider_name == "google_cloud":
                 self.provider = GoogleCloudTTSProvider(self.settings)
@@ -100,7 +104,7 @@ class TTSService:
         Switch to a different TTS provider
         
         Args:
-            new_provider: Name of the new provider (gtts, google_cloud, azure)
+            new_provider: Name of the new provider (gtts, openai, google_cloud, azure)
         """
         self.logger.info(f"🔄 Switching provider from {self.settings.TTS_PROVIDER} to {new_provider}")
         
