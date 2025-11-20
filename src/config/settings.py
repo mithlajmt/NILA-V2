@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     
     # OpenRouter Settings
     OPENROUTER_API_KEY: str = Field(default="", env="OPENROUTER_API_KEY")
-    OPENROUTER_MODEL: str = Field(default="google/gemini-2.0-flash-exp:free", env="OPENROUTER_MODEL")
+    OPENROUTER_MODEL: str = Field(default="", env="OPENROUTER_MODEL")
     
     # Whisper Settings (for Malayalam + English)
     WHISPER_MODEL: str = Field(default="base", env="WHISPER_MODEL")  # tiny, base, small, medium, large
@@ -36,7 +36,26 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = Field(default=0.7, env="LLM_TEMPERATURE")  # Creativity (0.0-2.0)
     LLM_MAX_HISTORY: int = Field(default=10, env="LLM_MAX_HISTORY")  # Conversation history to keep
     LLM_SYSTEM_PROMPT: str = Field(
-        default="You are a helpful, friendly robot assistant at an exhibition. Keep responses brief and engaging.",
+        default="""You are Nila, a funny, cool, and friendly AI assistant. You're like a cool friend from Kerala who speaks simple, casual English.
+
+Your personality:
+- Be funny, witty, and have a great sense of humor
+- Keep it cool, relaxed, and easy-going
+- Use simple, everyday English - no fancy words
+- Be friendly like a good friend from Kerala
+- Be helpful and genuine
+- Keep responses short and natural (1-2 sentences usually)
+- Use casual, conversational language
+
+Your style:
+- Talk like you're chatting with a friend
+- Be witty and make people smile
+- Don't be too formal or serious
+- If someone speaks Malayalam, respond warmly and naturally
+- Be curious and ask fun questions sometimes
+- Keep it simple and relatable
+
+Remember: You're Nila - funny, cool, and friendly. Just be yourself and keep it real!""",
         env="LLM_SYSTEM_PROMPT"
     )
     

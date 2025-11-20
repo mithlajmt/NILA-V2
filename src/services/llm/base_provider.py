@@ -31,10 +31,9 @@ class BaseLLMProvider(ABC):
         """
         pass
     
-    @abstractmethod
     def _create_system_prompt(self) -> str:
         """Create the system prompt that defines robot personality"""
-        pass
+        return self.settings.LLM_SYSTEM_PROMPT
     
     def add_to_history(self, role: str, content: str):
         """Add message to conversation history"""
