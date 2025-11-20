@@ -10,7 +10,12 @@ class GoogleSTTProvider(BaseSTTProvider):
         self.default_language = default_language
 
     async def transcribe(self, audio: sr.AudioData, language: Optional[str] = None) -> STTResult:
+        # Use provided language or default. If default is "auto", fallback to "en-IN" for Google STT
+        # as it doesn't support true auto-detect in this library wrapper.
         lang = language or self.default_language
+        if lang == "auto":
+            lang = "en-IN"
+            
         loop = asyncio.get_event_loop()
         try:
             text = await loop.run_in_executor(

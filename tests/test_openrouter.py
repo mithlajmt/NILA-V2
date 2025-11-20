@@ -23,13 +23,14 @@ async def test_openrouter():
         settings = Settings()
         print(f"✅ Settings loaded. Provider: {settings.LLM_PROVIDER}")
         print(f"✅ Model: {settings.OPENROUTER_MODEL}")
+        print(f"📜 System Prompt Preview: {settings.LLM_SYSTEM_PROMPT[:100]}...")
         
         llm = LLMService(settings)
         print("✅ LLM Service initialized")
         
         if settings.OPENROUTER_API_KEY:
             print("📡 Sending test message...")
-            response = await llm.get_response("Hello!sugamaaano kutta?")
+            response = await llm.get_response("Sugamano? (Reply in Manglish)")
             print(f"🤖 Response: {response}")
         else:
             print("⚠️ Skipping API call (no key)")
