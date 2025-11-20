@@ -3,6 +3,7 @@ from typing import Optional
 from .base_provider import BaseLLMProvider
 from .openai_provider import OpenAIProvider
 from .anthropic_provider import AnthropicProvider
+from .openrouter_provider import OpenRouterProvider
 
 class LLMService:
     """
@@ -10,7 +11,7 @@ class LLMService:
     
     Usage:
         # In .env file, set:
-        LLM_PROVIDER=openai        # or anthropic, google, etc.
+        LLM_PROVIDER=openai        # or anthropic, google, openrouter
         
         # In code:
         llm = LLMService(settings)
@@ -35,18 +36,21 @@ class LLMService:
         if provider_name == "openai":
             return OpenAIProvider(self.settings)
         
+        elif provider_name == "openrouter":
+            return OpenRouterProvider(self.settings)
+            
         elif provider_name == "anthropic":
             return AnthropicProvider(self.settings)
         
         elif provider_name == "google":
             self.logger.error("❌ Google Gemini provider not yet implemented!")
-            self.logger.info("   Available providers: openai")
+            self.logger.info("   Available providers: openai, openrouter")
             self.logger.info("   Falling back to OpenAI...")
             return OpenAIProvider(self.settings)
         
         else:
             self.logger.error(f"❌ Unknown LLM provider: {provider_name}")
-            self.logger.info("   Available providers: openai")
+            self.logger.info("   Available providers: openai, openrouter")
             self.logger.info("   Falling back to OpenAI...")
             return OpenAIProvider(self.settings)
     

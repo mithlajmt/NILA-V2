@@ -19,7 +19,11 @@ class Settings(BaseSettings):
     # Service Providers
     SPEECH_PROVIDER: str = Field(default="google", env="SPEECH_PROVIDER")  # "google" or "whisper"
     TTS_PROVIDER: str = Field(default="gtts", env="TTS_PROVIDER")  # "gtts", "openai", "google_cloud", "azure"
-    LLM_PROVIDER: str = Field(default="openai", env="LLM_PROVIDER")  # "openai", "anthropic", "google"
+    LLM_PROVIDER: str = Field(default="openai", env="LLM_PROVIDER")  # "openai", "anthropic", "google", "openrouter"
+    
+    # OpenRouter Settings
+    OPENROUTER_API_KEY: str = Field(default="", env="OPENROUTER_API_KEY")
+    OPENROUTER_MODEL: str = Field(default="google/gemini-2.0-flash-exp:free", env="OPENROUTER_MODEL")
     
     # Whisper Settings (for Malayalam + English)
     WHISPER_MODEL: str = Field(default="base", env="WHISPER_MODEL")  # tiny, base, small, medium, large

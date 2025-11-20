@@ -1,35 +1,37 @@
-import asyncio
 import logging
 from typing import Optional
 from openai import AsyncOpenAI
 from .base_provider import BaseLLMProvider
 
-class OpenAIProvider(BaseLLMProvider):
-    """OpenAI GPT provider for LLM responses"""
+class OpenRouterProvider(BaseLLMProvider):
+    """OpenRouter provider for LLM responses"""
     
     def __init__(self, settings):
         super().__init__(settings)
         self.logger = logging.getLogger(__name__)
         
         # Check API key
-        api_key = settings.OPENAI_API_KEY
+        api_key = settings.OPENROUTER_API_KEY
         if not api_key:
-            self.logger.error("❌ OpenAI API key not found!")
-            self.logger.error("   Please set OPENAI_API_KEY in .env file")
-            raise ValueError("OPENAI_API_KEY is required for OpenAI provider")
+            self.logger.error("❌ OpenRouter API key not found!")
+            self.logger.error("   Please set OPENROUTER_API_KEY in .env file")
+            raise ValueError("OPENROUTER_API_KEY is required for OpenRouter provider")
         
-        # Initialize OpenAI async client
-        self.client = AsyncOpenAI(api_key=api_key)
+        # Initialize OpenAI async client with OpenRouter base URL
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1"
+        )
         
         # Model configuration
-        self.model = settings.LLM_MODEL
+        self.model = settings.OPENROUTER_MODEL
         self.max_tokens = settings.LLM_MAX_TOKENS
         self.temperature = settings.LLM_TEMPERATURE
         
         # System prompt
         self.system_prompt = self._create_system_prompt()
         
-        self.logger.info(f"✅ OpenAI Provider initialized with model: {self.model}")
+        self.logger.info(f"✅ OpenRouter Provider initialized with model: {self.model}")
 
     def _create_system_prompt(self) -> str:
         """Create the robot's personality"""
@@ -55,9 +57,9 @@ Your style:
 Remember: You're Nila - funny, cool, and friendly. Just be yourself and keep it real!"""
     
     async def get_response(self, user_message: str, language: Optional[str] = None) -> Optional[str]:
-        """Get AI response from OpenAI"""
+        """Get AI response from OpenRouter"""
         try:
-            self.logger.info(f"🧠 Getting OpenAI response for: '{user_message[:50]}...'")
+            self.logger.info(f"🧠 Getting OpenRouter response for: '{user_message[:50]}...'")
             
             # Add user message to history
             self.add_to_history("user", user_message)
@@ -78,13 +80,17 @@ Remember: You're Nila - funny, cool, and friendly. Just be yourself and keep it 
                     "content": "Note: The user spoke in Malayalam. You can acknowledge this and respond warmly. Use simple English or basic Malayalam phrases if appropriate."
                 })
             
-            # Call OpenAI API
-            self.logger.debug(f"📡 Calling OpenAI API...")
+            # Call OpenRouter API
+            self.logger.debug(f"📡 Calling OpenRouter API...")
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/mithlajmt/NILA-V2", # Optional, for including your app on openrouter.ai rankings.
+                    "X-Title": "NILA-V2", # Optional. Shows in rankings on openrouter.ai.
+                },
             )
             
             # Extract response
@@ -103,7 +109,7 @@ Remember: You're Nila - funny, cool, and friendly. Just be yourself and keep it 
             return assistant_message
             
         except Exception as e:
-            self.logger.error(f"❌ OpenAI API error: {e}")
+            self.logger.error(f"❌ OpenRouter API error: {e}")
             self.stats['errors'] += 1
             return self._get_fallback_response()
     
@@ -122,24 +128,21 @@ Remember: You're Nila - funny, cool, and friendly. Just be yourself and keep it 
         """Get statistics including cost estimate"""
         stats = super().get_stats()
         stats['estimated_cost'] = self._estimate_cost()
-        stats['provider'] = 'OpenAI'
+        stats['provider'] = 'OpenRouter'
         stats['model'] = self.model
         return stats
     
     def _estimate_cost(self) -> float:
         """Estimate API cost based on tokens used"""
-        # Approximate costs (as of 2024)
-        # GPT-4: ~$0.03 per 1K tokens (input+output combined estimate)
-        # GPT-3.5-turbo: ~$0.002 per 1K tokens
-        if "gpt-4" in self.model.lower():
-            rate = 0.03
-        else:
-            rate = 0.002
-        
-        return round((self.stats['total_tokens_used'] / 1000) * rate, 4)
+        # Difficult to estimate exactly as OpenRouter has many models with different pricing
+        # We'll use a generic low-cost estimate for now, or 0 if free model
+        if "free" in self.model.lower():
+            return 0.0
+            
+        # Generic estimate for paid models (approx $0.001/1k)
+        return round((self.stats['total_tokens_used'] / 1000) * 0.001, 4)
     
     def cleanup(self):
         """Cleanup resources"""
-        self.logger.info("🧹 Cleaning up OpenAI provider...")
-        # AsyncOpenAI client doesn't need explicit cleanup
+        self.logger.info("🧹 Cleaning up OpenRouter provider...")
         pass
