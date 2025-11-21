@@ -61,10 +61,10 @@ Your style:
 - Keep it simple and relatable
 
 Language Handling:
-- If the user speaks Malayalam (or Manglish like "Sugamano"), respond in "Manglish" (Malayalam words written in English alphabets).
-- Example: Instead of "സുഖമാണോ", say "Sugamano?". Instead of "എന്താ വിശേഷം", say "Entha vishesham?".
-- CRITICAL: DO NOT USE MALAYALAM SCRIPT (Unicode) because the text-to-speech engine cannot read it.
-- ALWAYS write Malayalam words using English letters.
+- If the user speaks Malayalam (or Manglish like "Sugamano"), respond in native Malayalam script (Unicode).
+- Example: "സുഖമാണോ!", "എന്താ വിശേഷം?".
+- DO NOT use Manglish. Use pure Malayalam script.
+- The TTS engine (Piper) can now read Malayalam script perfectly.
 - If the user speaks English, respond in English.
 - You are bilingual and can switch effortlessly.""",
         env="LLM_SYSTEM_PROMPT"
@@ -73,11 +73,11 @@ Language Handling:
     # TTS Settings
     TTS_VOICE_MALAYALAM: str = Field(default="ml-IN-Wavenet-A", env="TTS_VOICE_MALAYALAM")  # Google Cloud voice for Malayalam
     TTS_VOICE_ENGLISH: str = Field(default="en-IN-Wavenet-D", env="TTS_VOICE_ENGLISH")  # Google Cloud voice for English
-    TTS_SPEAKING_RATE: float = Field(default=1.1, env="TTS_SPEAKING_RATE")  # 0.25 to 4.0 (1.0 = normal, 1.1 = energetic child)
-    TTS_PITCH: float = Field(default=6.0, env="TTS_PITCH")  # -20.0 to 20.0 (0.0 = normal, 6.0 = child-like)
+    TTS_SPEAKING_RATE: float = Field(default=1.2, env="TTS_SPEAKING_RATE")  # 0.25 to 4.0 (1.0 = normal, 1.2 = energetic/young)
+    TTS_PITCH: float = Field(default=4.0, env="TTS_PITCH")  # -20.0 to 20.0 (0.0 = normal, 4.0 = younger)
     TTS_VOLUME_GAIN_DB: float = Field(default=0.0, env="TTS_VOLUME_GAIN_DB")  # Volume adjustment in dB
     TTS_LANGUAGE: str = Field(default="auto", env="TTS_LANGUAGE")  # "en", "ml", or "auto" for auto-detect
-    STT_LANGUAGE: str = Field(default="en-IN", env="STT_LANGUAGE")
+    STT_LANGUAGE: str = Field(default="ml-IN", env="STT_LANGUAGE")
     
     # gTTS Settings (for free TTS)
     GTTS_TLD: str = Field(default="co.in", env="GTTS_TLD")  # Top-level domain: "com", "co.uk", "com.au", "co.in" (affects accent)
@@ -89,6 +89,16 @@ Language Handling:
     OPENAI_TTS_VOICE: str = Field(default="nova", env="OPENAI_TTS_VOICE")  # "alloy", "echo", "fable", "onyx", "nova", "shimmer"
     OPENAI_TTS_SPEED: float = Field(default=1.0, env="OPENAI_TTS_SPEED")  # 0.25 to 4.0 (1.0 = normal)
     OPENAI_TTS_FORMAT: str = Field(default="mp3", env="OPENAI_TTS_FORMAT")  # "mp3", "opus", "aac", "flac"
+
+    # Piper TTS Settings
+    PIPER_BINARY_PATH: str = Field(default="tools/piper/piper", env="PIPER_BINARY_PATH")
+    PIPER_MODEL_PATH: str = Field(default="data/models/piper/ml_IN-arjun-medium.onnx", env="PIPER_MODEL_PATH")
+
+    # Hardware / Serial Settings
+    SERIAL_PORT: str = Field(default="/dev/ttyUSB0", env="SERIAL_PORT")
+    SERIAL_BAUD: int = Field(default=115200, env="SERIAL_BAUD")
+    SERVO_MIN_ANGLE: int = Field(default=90, env="SERVO_MIN_ANGLE")
+    SERVO_MAX_ANGLE: int = Field(default=130, env="SERVO_MAX_ANGLE")
     
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")

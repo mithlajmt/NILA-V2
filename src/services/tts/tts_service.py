@@ -7,12 +7,12 @@ import logging
 from typing import Optional
 from .base_tts_provider import BaseTTSProvider
 from .gtts_provider import GTTSProvider
-from .google_cloud_tts_provider import GoogleCloudTTSProvider
 from .openai_tts_provider import OpenAITTSProvider
+from .piper_provider import PiperTTSProvider
 
 
 class TTSService:
-    """Factory class to create and manage TTS providers"""
+    """Factory for TTS providers"""
     
     def __init__(self, settings):
         self.settings = settings
@@ -34,8 +34,12 @@ class TTSService:
                 
             elif provider_name == "openai":
                 self.provider = OpenAITTSProvider(self.settings)
+            
+            elif provider_name == "piper":
+                self.provider = PiperTTSProvider(self.settings)
                 
             elif provider_name == "google_cloud":
+                from .google_cloud_tts_provider import GoogleCloudTTSProvider
                 self.provider = GoogleCloudTTSProvider(self.settings)
                 
             elif provider_name == "azure":
@@ -104,7 +108,7 @@ class TTSService:
         Switch to a different TTS provider
         
         Args:
-            new_provider: Name of the new provider (gtts, openai, google_cloud, azure)
+            new_provider: Name of the new provider (gtts, openai, google_cloud, azure, piper)
         """
         self.logger.info(f"🔄 Switching provider from {self.settings.TTS_PROVIDER} to {new_provider}")
         
