@@ -1,0 +1,33 @@
+# Step 2 - TTS + Speech Recognition (Improved)
+setuptools>=80.0.0  # Required for webrtcvad
+gtts==2.4.0
+pygame==2.5.2
+pydantic==2.4.2
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+SpeechRecognition==3.10.0
+pyaudio==0.2.14
+webrtcvad==2.0.10
+pyserial==3.5  # Required for Arduino communication
+
+# Advanced Speech Recognition (Multilingual - Malayalam + English)
+
+numpy==1.26.4
+
+# Step 3 - LLM Integration (Conversation Intelligence)
+openai==2.7.1
+anthropic==0.8.0
+
+# Step 4 - Advanced TTS (Multilingual - Malayalam + English)
+google-cloud-texttospeech==2.14.1
+pydub==0.25.1
+
+
+# GOOGLE APIs (we’re moving to these)
+google-cloud-speech==2.27.0
+google-cloud-texttospeech==2.14.1
+google-generativeai==0.3.0  # Gemini (optional but recommended)
+
+# Future additions:
+# google-generativeai==0.3.0
+# azure-cognitiveservices-speech==1.31.0

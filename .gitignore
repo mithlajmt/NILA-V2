@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Piper TTS - All files (will be downloaded by setup script)
+tools/piper/
+data/models/piper/
+
+# Vosk Models - All files (will be downloaded by setup script)
+data/models/vosk/
+
+# Audio files (large)
+data/audio/
+
+# Logs
+*.log
+data/logs/
+
+# Temporary files
+*.tmp
+*.temp
+voices_temp.json
+.git.backup
+
+# Test outputs
+test.wav
+*.wav
