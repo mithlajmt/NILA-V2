@@ -45,16 +45,28 @@ class SpeechRecognizer:
         try:
             # List all devices
             mic_names = sr.Microphone.list_microphone_names()
-            self.logger.info(f"🎧 Available Audio Devices: {mic_names}")
-            
-            # 1. Try to find a USB microphone
+            self.logger.info(f"🎧 Available Audio Devices ({len(mic_names)} found):")
             for i, name in enumerate(mic_names):
-                if "USB" in name and "sysdefault" not in name: # Avoid virtual devices if possible
+                self.logger.info(f"   [{i}] {name}")
+            
+            # 1. Try to find a USB microphone (exact match for Pi)
+            for i, name in enumerate(mic_names):
+                name_lower = name.lower()
+                # Look for USB devices, prioritize specific ones
+                if "usb pnp sound device" in name_lower or \
+                   ("usb" in name_lower and "audio" in name_lower and "sysdefault" not in name_lower):
                     self.logger.info(f"✅ Found USB Microphone: '{name}' at index {i}")
                     return sr.Microphone(device_index=i)
             
-            # 2. Fallback: Try default device with retries
-            self.logger.info("⚠️ No USB Mic found, using default device")
+            # 2. Try any USB device
+            for i, name in enumerate(mic_names):
+                if "usb" in name.lower() and "sysdefault" not in name.lower():
+                    self.logger.info(f"✅ Found USB device: '{name}' at index {i}")
+                    return sr.Microphone(device_index=i)
+            
+            # 3. Fallback: Try default device
+            self.logger.warning("⚠️ No USB Mic found, using default device")
+            self.logger.warning("   This may cause issues on Raspberry Pi!")
             return sr.Microphone()
             
         except Exception as e:
