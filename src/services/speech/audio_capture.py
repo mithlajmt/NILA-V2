@@ -34,23 +34,96 @@ class AudioCapture:
     def __init__(self, config: Optional[AudioConfig] = None, device_name: str = ""):
         self.config = config or AudioConfig()
         self.logger = logging.getLogger(__name__)
-
-        # Configure PulseAudio source if a specific node name is provided
-        # This is critical for PipeWire/PulseAudio environments where device enumeration
-        # only shows "pulse" or "default" but we need a specific hardware source.
-        if device_name and ("alsa" in device_name or "." in device_name):
-            try:
-                import os
-                os.environ["PULSE_SOURCE"] = device_name
-                self.logger.info(f"🔧 Forced PulseAudio source: {device_name}")
-            except Exception as e:
-                self.logger.warning(f"⚠️ Failed to set PULSE_SOURCE: {e}")
         
+        # -------------------------------------------------------------------------
+        # 🔧 FIX: Force PipeWire-native capture via PulseAudio (Bypass ALSA)
+        # -------------------------------------------------------------------------
+        # 1. Set Environment Variables
+        import os
+        # Force PortAudio to NOT use ALSA
+        # (These are safe defaults for RPi + PipeWire)
+        os.environ["SD_USE_PULSEAUDIO"] = "1"
+        
+        # 2. Set PULSE_SOURCE to specific node if provided
+        if device_name and ("alsa" in device_name or "." in device_name):
+            os.environ["PULSE_SOURCE"] = device_name
+            self.logger.info(f"🔧 Forced PulseAudio source: {device_name}")
+            
+        # 3. Force sounddevice to use PulseAudio Host API
+        # This prevents the 'ALSA lib pcm_pulse.c: matches ...' timeout error
+        try:
+            host_apis = sd.query_hostapis()
+            # Find API named 'pulseaudio' or 'pulse'
+            pulse_api_index = next(
+                (i for i, h in enumerate(host_apis) if "pulse" in h["name"].lower()), 
+                None
+            )
+            
+            if pulse_api_index is not None:
+                sd.default.hostapi = pulse_api_index
+                self.logger.info(f"✅ Forced sounddevice Host API to: PulseAudio (Index {pulse_api_index})")
+                # When Host API is forced, device=None means 'Default device of that API'
+                self.device_index = None 
+            else:
+                self.logger.warning("⚠️ PulseAudio Host API not found. Falling back to auto-detect.")
+                self.device_index = self._find_best_device(device_name)
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error setting Host API: {e}")
+            self.device_index = self._find_best_device(device_name)
+
         # Voice Activity Detection
         self.vad = webrtcvad.Vad(self.config.vad_aggressiveness)
         
-        # Audio device
-        self.device_index = self._find_best_device(device_name)
+        # Calculate chunk size for VAD frames
+        self.chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000)
+        
+        self.logger.info(f"🎙️ AudioCapture initialized (device={self.device_index}, rate={self.config.sample_rate}Hz)")
+    
+    
+    def _find_best_device(self, preferred_name: str = "") -> Optional[int]:
+        """
+        Find the best input device, prioritizing USB microphones (Fallback)
+        """
+        try:
+            self.logger.info("🔍 Seeking device (Fallback mode)...")
+            devices = sd.query_devices()
+            self.logger.info(f"🎧 Available Audio Devices ({len(devices)} found):")
+            
+            input_devices = []
+            for i, device in enumerate(devices):
+                if device['max_input_channels'] > 0:
+                    self.logger.info(f"   [{i}] {device['name']} (in={device['max_input_channels']})")
+                    input_devices.append((i, device))
+            
+            # If specific device requested, try to find it
+            if preferred_name:
+                for idx, device in input_devices:
+                    if preferred_name.lower() in device['name'].lower():
+                        self.logger.info(f"✅ Found preferred device: '{device['name']}' at index {idx}")
+                        return idx
+            
+            # Priority 1: USB PnP Sound Device (common on Raspberry Pi)
+            for idx, device in input_devices:
+                name_lower = device['name'].lower()
+                if "usb pnp sound device" in name_lower or \
+                   ("usb" in name_lower and "audio" in name_lower and "sysdefault" not in name_lower):
+                    self.logger.info(f"✅ Found USB Microphone: '{device['name']}' at index {idx}")
+                    return idx
+            
+            # Priority 2: Any USB device
+            for idx, device in input_devices:
+                if "usb" in device['name'].lower() and "sysdefault" not in device['name'].lower():
+                    self.logger.info(f"✅ Found USB device: '{device['name']}' at index {idx}")
+                    return idx
+            
+            # Priority 3: Default device
+            self.logger.warning("⚠️ No USB mic found, using system default")
+            return None  # None = use system default
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error finding audio device: {e}")
+            return None
         
         # Calculate chunk size for VAD frames
         self.chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000)
