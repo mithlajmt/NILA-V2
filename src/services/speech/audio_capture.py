@@ -34,6 +34,17 @@ class AudioCapture:
     def __init__(self, config: Optional[AudioConfig] = None, device_name: str = ""):
         self.config = config or AudioConfig()
         self.logger = logging.getLogger(__name__)
+
+        # Configure PulseAudio source if a specific node name is provided
+        # This is critical for PipeWire/PulseAudio environments where device enumeration
+        # only shows "pulse" or "default" but we need a specific hardware source.
+        if device_name and ("alsa" in device_name or "." in device_name):
+            try:
+                import os
+                os.environ["PULSE_SOURCE"] = device_name
+                self.logger.info(f"🔧 Forced PulseAudio source: {device_name}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Failed to set PULSE_SOURCE: {e}")
         
         # Voice Activity Detection
         self.vad = webrtcvad.Vad(self.config.vad_aggressiveness)

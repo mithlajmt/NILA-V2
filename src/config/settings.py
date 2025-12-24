@@ -105,7 +105,7 @@ Language Handling:
     # Audio Capture Settings (Raspberry Pi / PipeWire)
     AUDIO_SAMPLE_RATE: int = Field(default=16000, env="AUDIO_SAMPLE_RATE")  # Hz (Google STT requires 16kHz)
     AUDIO_CHANNELS: int = Field(default=1, env="AUDIO_CHANNELS")  # Mono
-    AUDIO_DEVICE_NAME: str = Field(default="", env="AUDIO_DEVICE_NAME")  # Empty = auto-detect USB mic
+    AUDIO_DEVICE_NAME: str = Field(default="alsa_input.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.analog-mono", env="AUDIO_DEVICE_NAME")  # Specific Pulse/PipeWire source node
     
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")

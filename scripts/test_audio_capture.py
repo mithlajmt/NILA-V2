@@ -31,13 +31,19 @@ def test_record(duration: float = 5.0, output_file: str = "test_recording.wav"):
     print("="*60)
     
     # Initialize audio capture
+from src.config.settings import Settings
+
+    # Initialize audio capture
+    settings = Settings()
     config = AudioConfig(
         sample_rate=16000,
         channels=1,
         vad_aggressiveness=2
     )
     
-    capture = AudioCapture(config=config)
+    # Use device name from settings to ensure PULSE_SOURCE fix is applied
+    device_name = settings.AUDIO_DEVICE_NAME
+    capture = AudioCapture(config=config, device_name=device_name)
     
     print(f"\n📍 Using device: {capture.get_device_info()['name']}")
     print(f"📊 Sample rate: {config.sample_rate}Hz")
@@ -92,13 +98,15 @@ def test_vad_record(timeout: int = 10):
     print("="*60)
     
     # Initialize audio capture
+    settings = Settings()
     config = AudioConfig(
         sample_rate=16000,
         channels=1,
         vad_aggressiveness=2
     )
     
-    capture = AudioCapture(config=config)
+    device_name = settings.AUDIO_DEVICE_NAME
+    capture = AudioCapture(config=config, device_name=device_name)
     
     print(f"\n📍 Using device: {capture.get_device_info()['name']}")
     print(f"⏱️  Timeout: {timeout}s")
