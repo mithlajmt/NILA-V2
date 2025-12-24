@@ -59,15 +59,35 @@ class AudioCapture:
     
     def _find_best_device(self, preferred_name: str = "") -> Optional[int]:
         """
-        Find the best input device, prioritizing USB microphones
-        
-        Args:
-            preferred_name: Specific device name to search for (optional)
-            
-        Returns:
-            Device index or None for system default
+        Find the best input device, prioritizing native PulseAudio backend
+        to avoid ALSA<->Pulse plugin deadlocks.
         """
         try:
+            self.logger.info("🔍 seeking best audio device...")
+            
+            # -----------------------------------------------------------
+            # STRATEGY 1: Force Native PulseAudio Backend (The Fix)
+            # -----------------------------------------------------------
+            # We look for the 'pulse' host API (Host API, NOT device name).
+            # This bypasses the ALSA emulation layer entirely.
+            try:
+                host_apis = sd.query_hostapis()
+                for i, api in enumerate(host_apis):
+                    if 'pulse' in api['name'].lower():
+                        pulse_def_in = api['default_input_device']
+                        if pulse_def_in >= 0:
+                            dev_info = sd.query_devices(pulse_def_in)
+                            self.logger.info(f"🚀 Found PulseAudio Backend (API #{i})")
+                            self.logger.info(f"   Using its default input: [{pulse_def_in}] {dev_info.get('name')}")
+                            # We already set PULSE_SOURCE env var in __init__, 
+                            # so 'default input' will route to that specific mic.
+                            return pulse_def_in
+            except Exception as e:
+                self.logger.warning(f"⚠️ Could not query Host APIs: {e}")
+
+            # -----------------------------------------------------------
+            # STRATEGY 2: Fallback to searching device list (Legacy)
+            # -----------------------------------------------------------
             devices = sd.query_devices()
             self.logger.info(f"🎧 Available Audio Devices ({len(devices)} found):")
             
