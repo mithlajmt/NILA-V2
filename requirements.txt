@@ -1,12 +1,13 @@
-# Step 2 - TTS + Speech Recognition (Improved)
+# Step 2 - TTS + Speech Recognition (PipeWire-compatible for Raspberry Pi)
 setuptools>=80.0.0  # Required for webrtcvad
 gtts==2.4.0
 pygame==2.5.2
 pydantic==2.4.2
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
-SpeechRecognition==3.10.0
-pyaudio==0.2.14
+sounddevice==0.4.6  # PipeWire-compatible audio capture (replaces PyAudio)
+scipy==1.11.4  # Audio processing utilities
+SpeechRecognition==3.10.0  # Used ONLY for free Google API wrapper (not for mic access)
 webrtcvad==2.0.10
 pyserial==3.5  # Required for Arduino communication
 

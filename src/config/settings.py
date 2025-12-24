@@ -102,6 +102,11 @@ Language Handling:
     SERVO_MIN_ANGLE: int = Field(default=90, env="SERVO_MIN_ANGLE")
     SERVO_MAX_ANGLE: int = Field(default=130, env="SERVO_MAX_ANGLE")
     
+    # Audio Capture Settings (Raspberry Pi / PipeWire)
+    AUDIO_SAMPLE_RATE: int = Field(default=16000, env="AUDIO_SAMPLE_RATE")  # Hz (Google STT requires 16kHz)
+    AUDIO_CHANNELS: int = Field(default=1, env="AUDIO_CHANNELS")  # Mono
+    AUDIO_DEVICE_NAME: str = Field(default="", env="AUDIO_DEVICE_NAME")  # Empty = auto-detect USB mic
+    
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     LOG_FILE: str = Field(default="data/logs/robot.log", env="LOG_FILE")
