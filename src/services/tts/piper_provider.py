@@ -230,7 +230,8 @@ class PiperTTSProvider(BaseTTSProvider):
                             rms = audioop.rms(data, sampwidth)
                             
                             # Normalize RMS to 0-100 range
-                            scaling_factor = 3000 
+                            # Lower factor = more sensitive (opens wider for quieter sounds)
+                            scaling_factor = 2000 
                             intensity = min(100, int((rms / scaling_factor) * 100))
                             
                             # Send to Hardware

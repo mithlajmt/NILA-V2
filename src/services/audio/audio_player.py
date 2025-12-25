@@ -105,7 +105,8 @@ class AudioPlayer:
                             rms = audioop.rms(data, sampwidth)
                             
                             # Normalize (adjust scaling factor as needed)
-                            scaling_factor = 3000 
+                            # Lower factor = more sensitive
+                            scaling_factor = 2000 
                             intensity = min(100, int((rms / scaling_factor) * 100))
                             
                             callback(intensity)

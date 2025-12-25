@@ -18,13 +18,18 @@
 #include <Servo.h>
 
 // Pin Definitions
-const int SERVO_PIN = 9;
+const int SERVO_PIN = 7;
 const int EYE_LED_PIN = A1;
 
 // Servo Configuration
 Servo jawServo;
-const int JAW_CLOSED_ANGLE = 90;
-const int JAW_OPEN_ANGLE = 130;
+const int JAW_CLOSED_ANGLE = 50;
+const int JAW_OPEN_ANGLE = 110;
+
+// Smoothing
+int currentAngle = JAW_CLOSED_ANGLE;
+int targetAngle = JAW_CLOSED_ANGLE;
+float smoothingFactor = 0.3; // 0.1 to 1.0 (lower means smoother/slower)
 
 // Safety Timeout
 unsigned long lastCommandTime = 0;
@@ -57,21 +62,24 @@ void loop() {
     // Update last command time
     lastCommandTime = millis();
     
-    // Map intensity (0-100) to angle (90-130)
-    int angle = map(intensity, 0, 100, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
-    
-    // Constrain angle just in case
-    angle = constrain(angle, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
-    
-    // Move servo
-    jawServo.write(angle);
+    // Map intensity (0-100) to target angle (50-110)
+    targetAngle = map(intensity, 0, 100, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
+    targetAngle = constrain(targetAngle, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
   }
   
   // Safety Timeout: Close jaw if silence
   if (millis() - lastCommandTime > TIMEOUT_MS) {
-    jawServo.write(JAW_CLOSED_ANGLE);
+    targetAngle = JAW_CLOSED_ANGLE;
+  }
+
+  // Smooth movement
+  if (abs(currentAngle - targetAngle) > 0) {
+    currentAngle = currentAngle + (targetAngle - currentAngle) * smoothingFactor;
+    jawServo.write(currentAngle);
   }
   
   // Keep eyes ON
   digitalWrite(EYE_LED_PIN, HIGH);
+  
+  delay(15); // Small delay for smooth servo movement
 }
