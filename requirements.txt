@@ -12,7 +12,7 @@ webrtcvad==2.0.10
 pyserial==3.5  # Required for Arduino communication
 
 # Advanced Speech Recognition (Multilingual - Malayalam + English)
-
+faster-whisper==1.0.1
 numpy==1.26.4
 
 # Step 3 - LLM Integration (Conversation Intelligence)

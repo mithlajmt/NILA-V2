@@ -49,15 +49,20 @@ class SpeechRecognizer:
     def _init_provider(self):
         if self.provider_name == "whisper":
             try:
-                import whisper
-                model = whisper.load_model(self.settings.WHISPER_MODEL, device=self.settings.WHISPER_DEVICE)
                 from src.services.speech.providers.whisper_stt_provider import WhisperSTTProvider
-                lang = None if self.settings.WHISPER_LANGUAGE in ("auto", "", None) else self.settings.WHISPER_LANGUAGE
-                self.provider = WhisperSTTProvider(model=model, language=lang)
-                self.logger.info("🧠 Whisper provider loaded")
+                
+                # Faster-Whisper handles its own loading
+                self.provider = WhisperSTTProvider(
+                    model_size=getattr(self.settings, 'WHISPER_MODEL', 'tiny'),
+                    device=getattr(self.settings, 'WHISPER_DEVICE', 'cpu'),
+                    compute_type="int8",  # Force int8 for Pi performance
+                    language=None if self.settings.WHISPER_LANGUAGE in ("auto", "", None) else self.settings.WHISPER_LANGUAGE
+                )
+                self.logger.info(f"🧠 Faster-Whisper provider initialized")
             except Exception as e:
                 self.logger.warning(f"⚠️ Whisper init failed: {e}. Falling back to Google.")
                 self.provider_name = "google"
+                self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
                 self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
         else:
             self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))

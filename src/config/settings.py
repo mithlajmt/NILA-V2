@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str = Field(default="", env="GOOGLE_APPLICATION_CREDENTIALS")  # Path to Google Cloud JSON
     
     # Service Providers
-    SPEECH_PROVIDER: str = Field(default="google", env="SPEECH_PROVIDER")  # "google" or "whisper"
+    SPEECH_PROVIDER: str = Field(default="whisper", env="SPEECH_PROVIDER")  # "google" or "whisper"
     TTS_PROVIDER: str = Field(default="gtts", env="TTS_PROVIDER")  # "gtts", "openai", "google_cloud", "azure"
     LLM_PROVIDER: str = Field(default="openai", env="LLM_PROVIDER")  # "openai", "anthropic", "google", "openrouter"
     
@@ -26,8 +26,14 @@ class Settings(BaseSettings):
     OPENROUTER_MODEL: str = Field(default="", env="OPENROUTER_MODEL")
     
     # Whisper Settings (for Malayalam + English)
-    WHISPER_MODEL: str = Field(default="base", env="WHISPER_MODEL")  # tiny, base, small, medium, large
-    WHISPER_LANGUAGE: str = Field(default="en", env="WHISPER_LANGUAGE")  # "en" for English, "ml" for Malayalam, "auto" for auto-detect
+    WHISPER_MODEL: str = Field(default="tiny", env="WHISPER_MODEL")  # tiny, base, small, medium, large
+    
+    # Language Selection:
+    # "auto" = Auto-detects language (Supports both English & Malayalam, slightly slower)
+    # "en"   = Forces English (Fastest, best for English-only)
+    # "ml"   = Forces Malayalam (Best if you ONLY speak Malayalam)
+    WHISPER_LANGUAGE: str = Field(default="auto", env="WHISPER_LANGUAGE")
+    
     WHISPER_DEVICE: str = Field(default="cpu", env="WHISPER_DEVICE")  # "cpu" or "cuda" (for GPU)
     
     # LLM Settings
