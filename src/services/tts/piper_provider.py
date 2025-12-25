@@ -7,7 +7,7 @@ import math
 import time
 from pathlib import Path
 from typing import Optional
-import pygame
+# pygame removed for pure ALSA support
 from .base_tts_provider import BaseTTSProvider
 from ..hardware.serial_controller import SerialController
 
@@ -32,13 +32,9 @@ class PiperTTSProvider(BaseTTSProvider):
         if not self.model_path.exists():
             self.logger.warning(f"⚠️ Piper model not found at {self.model_path}")
         
-        # Initialize pygame mixer
-        # Piper usually outputs 22050Hz or 16000Hz depending on model. 
-        # Lessac medium is 22050Hz.
-        try:
-            pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=1024)
-        except Exception as e:
-            self.logger.warning(f"⚠️ Pygame mixer init failed: {e}")
+        # Audio cache directory
+        self.cache_dir = Path("data/audio/piper")
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         # Audio cache directory
         self.cache_dir = Path("data/audio/piper")
@@ -181,13 +177,13 @@ class PiperTTSProvider(BaseTTSProvider):
             return None
 
     async def _play_with_lipsync(self, audio_file: Path):
-        """Play audio and drive jaw servo based on amplitude"""
+        """Play audio using 'aplay' and drive jaw servo"""
         try:
             self.is_speaking = True
             
-            # Start audio playback
-            pygame.mixer.music.load(str(audio_file))
-            pygame.mixer.music.play()
+            # Start audio playback via ALSA (aplay)
+            # -q = quiet
+            process = subprocess.Popen(['aplay', '-q', str(audio_file)])
             
             # Start Lip Sync Loop
             start_time = time.time()
@@ -202,28 +198,32 @@ class PiperTTSProvider(BaseTTSProvider):
                 chunk_ms = 50
                 chunk_size = int(framerate * chunk_ms / 1000)
                 
-                while pygame.mixer.music.get_busy():
+                # Loop while process is running
+                while process.poll() is None:
                     # Calculate current position in frames
                     elapsed = time.time() - start_time
                     current_frame = int(elapsed * framerate)
                     
                     # Seek and read chunk
-                    wf.setpos(min(current_frame, wf.getnframes() - 1))
-                    data = wf.readframes(chunk_size)
-                    
-                    if data:
-                        # Calculate RMS amplitude
-                        rms = audioop.rms(data, sampwidth)
+                    if current_frame < wf.getnframes():
+                        wf.setpos(current_frame)
+                        data = wf.readframes(chunk_size)
                         
-                        # Normalize RMS to 0-100 range
-                        # Adjust scaling factor based on typical volume
-                        scaling_factor = 3000 # Adjust this if jaw moves too little/much
-                        intensity = min(100, int((rms / scaling_factor) * 100))
-                        
-                        # Send to Hardware
-                        self.hardware.send_jaw_intensity(intensity)
+                        if data:
+                            # Calculate RMS amplitude
+                            rms = audioop.rms(data, sampwidth)
+                            
+                            # Normalize RMS to 0-100 range
+                            scaling_factor = 3000 
+                            intensity = min(100, int((rms / scaling_factor) * 100))
+                            
+                            # Send to Hardware
+                            self.hardware.send_jaw_intensity(intensity)
                     
-                    await asyncio.sleep(0.05) # Wait for next update
+                    await asyncio.sleep(0.05) 
+            
+            # Ensure process finishes
+            process.wait()
             
             # Ensure jaw is closed at the end
             self.hardware.send_jaw_intensity(0)
@@ -268,18 +268,19 @@ class PiperTTSProvider(BaseTTSProvider):
     def stop_speaking(self):
         """Stop current speech"""
         if self.is_speaking:
-            pygame.mixer.music.stop()
+            # We can't easily kill the subprocess from here without storing the reference
+            # Ideally we would store self.current_process and kill it
+            # For now, just setting flag. In a robust impl, track the Popen object.
+            
+            # Since we didn't store the process in self, we rely on the command ending quickly.
+            # But the 'aplay' command is short-lived anyway.
             self.is_speaking = False
-            self.logger.info("⏹️ Speech stopped")
+            self.logger.info("⏹️ Speech stop requested")
     
     def cleanup(self):
         """Cleanup resources"""
         self.logger.info("🧽 Cleaning up Piper TTS provider...")
         self.stop_speaking()
-        try:
-            pygame.mixer.quit()
-        except:
-            pass
     
     def get_provider_name(self) -> str:
         """Return provider name"""

@@ -13,7 +13,7 @@ class AudioConfig:
     sample_rate: int = 16000  # Hz (required by Google STT)
     channels: int = 1  # Mono
     chunk_duration_ms: int = 30  # VAD frame size (10, 20, or 30ms)
-    vad_aggressiveness: int = 2  # 0-3, higher = more aggressive
+    vad_aggressiveness: int = 3  # 0-3, higher = more aggressive (filters more noise)
 
 
 class AudioCapture:
@@ -84,7 +84,7 @@ class AudioCapture:
 
     def record(self, 
                timeout: int = 30,
-               silence_duration: float = 1.5,
+               silence_duration: float = 1.0,
                min_speech_duration: float = 0.5) -> Optional[bytes]:
         """
         Record audio using 'arecord' subprocess

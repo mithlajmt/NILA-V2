@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # Service Providers
     SPEECH_PROVIDER: str = Field(default="whisper", env="SPEECH_PROVIDER")  # "google" or "whisper"
-    TTS_PROVIDER: str = Field(default="gtts", env="TTS_PROVIDER")  # "gtts", "openai", "google_cloud", "azure"
+    TTS_PROVIDER: str = Field(default="piper", env="TTS_PROVIDER")  # "gtts", "openai", "google_cloud", "azure", "piper"
     LLM_PROVIDER: str = Field(default="openai", env="LLM_PROVIDER")  # "openai", "anthropic", "google", "openrouter"
     
     # OpenRouter Settings
