@@ -1,343 +1,226 @@
-"""
-PipeWire-compatible audio capture for Raspberry Pi
-Replaces PyAudio/speech_recognition with sounddevice for stability
-"""
 import logging
-import numpy as np
-import sounddevice as sd
-import webrtcvad
+import subprocess
+import threading
 import time
-from typing import Optional, Tuple
+import re
+from typing import Optional, List, Dict
 from dataclasses import dataclass
-
+import webrtcvad
 
 @dataclass
 class AudioConfig:
     """Audio capture configuration optimized for Raspberry Pi + Google STT"""
     sample_rate: int = 16000  # Hz (required by Google STT)
     channels: int = 1  # Mono
-    dtype: str = 'int16'  # 16-bit PCM
     chunk_duration_ms: int = 30  # VAD frame size (10, 20, or 30ms)
     vad_aggressiveness: int = 2  # 0-3, higher = more aggressive
 
 
 class AudioCapture:
     """
-    PipeWire-native audio capture with Voice Activity Detection
+    Pure ALSA Audio Capture using 'arecord'
     
-    Designed for Raspberry Pi with:
-    - USB microphone input
-    - Bluetooth audio output
-    - PipeWire/PulseAudio audio server
+    Robust for Raspberry Pi robots:
+    - Bypasses PipeWire/PulseAudio complexities
+    - Uses native kernel drivers via ALSA
+    - Zero latency, no timeouts
     """
     
     def __init__(self, config: Optional[AudioConfig] = None, device_name: str = ""):
         self.config = config or AudioConfig()
         self.logger = logging.getLogger(__name__)
         
-        # -------------------------------------------------------------------------
-        # 🔧 FIX: Force PipeWire-native capture via PulseAudio (Bypass ALSA)
-        # -------------------------------------------------------------------------
-        # 1. Set Environment Variables
-        import os
-        # Force PortAudio to NOT use ALSA
-        # (These are safe defaults for RPi + PipeWire)
-        os.environ["SD_USE_PULSEAUDIO"] = "1"
-        
-        # 2. Set PULSE_SOURCE to specific node if provided
-        if device_name and ("alsa" in device_name or "." in device_name):
-            os.environ["PULSE_SOURCE"] = device_name
-            self.logger.info(f"🔧 Forced PulseAudio source: {device_name}")
-            
-        # 3. Force sounddevice to use PulseAudio Host API
-        # This prevents the 'ALSA lib pcm_pulse.c: matches ...' timeout error
-        try:
-            host_apis = sd.query_hostapis()
-            # Find API named 'pulseaudio' or 'pulse'
-            pulse_api_index = next(
-                (i for i, h in enumerate(host_apis) if "pulse" in h["name"].lower()), 
-                None
-            )
-            
-            if pulse_api_index is not None:
-                sd.default.hostapi = pulse_api_index
-                self.logger.info(f"✅ Forced sounddevice Host API to: PulseAudio (Index {pulse_api_index})")
-                # When Host API is forced, device=None means 'Default device of that API'
-                self.device_index = None 
-            else:
-                self.logger.warning("⚠️ PulseAudio Host API not found. Falling back to auto-detect.")
-                self.device_index = self._find_best_device(device_name)
-                
-        except Exception as e:
-            self.logger.error(f"❌ Error setting Host API: {e}")
-            self.device_index = self._find_best_device(device_name)
-
         # Voice Activity Detection
         self.vad = webrtcvad.Vad(self.config.vad_aggressiveness)
         
-        # Calculate chunk size for VAD frames
-        self.chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000)
+        # Calculate chunk size (bytes) for VAD
+        # 16-bit = 2 bytes per sample
+        self.chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000) * 2
         
-        self.logger.info(f"🎙️ AudioCapture initialized (device={self.device_index}, rate={self.config.sample_rate}Hz)")
-    
-    
-    def _find_best_device(self, preferred_name: str = "") -> Optional[int]:
-        """
-        Find the best input device, prioritizing USB microphones (Fallback)
-        """
-        try:
-            self.logger.info("🔍 Seeking device (Fallback mode)...")
-            devices = sd.query_devices()
-            self.logger.info(f"🎧 Available Audio Devices ({len(devices)} found):")
-            
-            input_devices = []
-            for i, device in enumerate(devices):
-                if device['max_input_channels'] > 0:
-                    self.logger.info(f"   [{i}] {device['name']} (in={device['max_input_channels']})")
-                    input_devices.append((i, device))
-            
-            # If specific device requested, try to find it
-            if preferred_name:
-                for idx, device in input_devices:
-                    if preferred_name.lower() in device['name'].lower():
-                        self.logger.info(f"✅ Found preferred device: '{device['name']}' at index {idx}")
-                        return idx
-            
-            # Priority 1: USB PnP Sound Device (common on Raspberry Pi)
-            for idx, device in input_devices:
-                name_lower = device['name'].lower()
-                if "usb pnp sound device" in name_lower or \
-                   ("usb" in name_lower and "audio" in name_lower and "sysdefault" not in name_lower):
-                    self.logger.info(f"✅ Found USB Microphone: '{device['name']}' at index {idx}")
-                    return idx
-            
-            # Priority 2: Any USB device
-            for idx, device in input_devices:
-                if "usb" in device['name'].lower() and "sysdefault" not in device['name'].lower():
-                    self.logger.info(f"✅ Found USB device: '{device['name']}' at index {idx}")
-                    return idx
-            
-            # Priority 3: Default device
-            self.logger.warning("⚠️ No USB mic found, using system default")
-            return None  # None = use system default
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error finding audio device: {e}")
-            return None
+        # Find the hardware device string (e.g. "plughw:1,0")
+        self.device_id = self._find_alsa_device(device_name)
         
-        # Calculate chunk size for VAD frames
-        self.chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000)
-        
-        self.logger.info(f"🎙️ AudioCapture initialized (device={self.device_index}, rate={self.config.sample_rate}Hz)")
-    
-    def _find_best_device(self, preferred_name: str = "") -> Optional[int]:
-        """
-        Find the best input device, prioritizing native PulseAudio backend
-        to avoid ALSA<->Pulse plugin deadlocks.
-        """
-        try:
-            self.logger.info("🔍 seeking best audio device...")
-            
-            # -----------------------------------------------------------
-            # STRATEGY 1: Force Native PulseAudio Backend (The Fix)
-            # -----------------------------------------------------------
-            # We look for the 'pulse' host API (Host API, NOT device name).
-            # This bypasses the ALSA emulation layer entirely.
-            try:
-                host_apis = sd.query_hostapis()
-                for i, api in enumerate(host_apis):
-                    if 'pulse' in api['name'].lower():
-                        pulse_def_in = api['default_input_device']
-                        if pulse_def_in >= 0:
-                            dev_info = sd.query_devices(pulse_def_in)
-                            self.logger.info(f"🚀 Found PulseAudio Backend (API #{i})")
-                            self.logger.info(f"   Using its default input: [{pulse_def_in}] {dev_info.get('name')}")
-                            # We already set PULSE_SOURCE env var in __init__, 
-                            # so 'default input' will route to that specific mic.
-                            return pulse_def_in
-            except Exception as e:
-                self.logger.warning(f"⚠️ Could not query Host APIs: {e}")
+        self.logger.info(f"🎙️ AudioCapture initialized (device={self.device_id}, rate={self.config.sample_rate}Hz)")
 
-            # -----------------------------------------------------------
-            # STRATEGY 2: Fallback to searching device list (Legacy)
-            # -----------------------------------------------------------
-            devices = sd.query_devices()
-            self.logger.info(f"🎧 Available Audio Devices ({len(devices)} found):")
+    def _find_alsa_device(self, preferred_name: str = "") -> str:
+        """Parse 'arecord -l' to find the USB microphone card"""
+        try:
+            # Run arecord -l to list capture devices
+            result = subprocess.run(['arecord', '-l'], capture_output=True, text=True)
+            output = result.stdout
             
-            input_devices = []
-            for i, device in enumerate(devices):
-                if device['max_input_channels'] > 0:
-                    self.logger.info(f"   [{i}] {device['name']} (in={device['max_input_channels']})")
-                    input_devices.append((i, device))
-            
-            # If specific device requested, try to find it
+            # Regex to find card and device numbers
+            # Example: card 2: Device [USB PnP Sound Device], device 0: USB Audio [USB Audio]
+            cards = {}
+            for line in output.split('\n'):
+                match = re.search(r'card (\d+):.*?\[(.*?)\], device (\d+):', line)
+                if match:
+                    card_idx = match.group(1)
+                    name = match.group(2)
+                    dev_idx = match.group(3)
+                    cards[f"{card_idx},{dev_idx}"] = name
+                    self.logger.info(f"   Found ALSA Device: card {card_idx}, dev {dev_idx} [{name}]")
+
+            # 1. Try preferred name
             if preferred_name:
-                for idx, device in input_devices:
-                    if preferred_name.lower() in device['name'].lower():
-                        self.logger.info(f"✅ Found preferred device: '{device['name']}' at index {idx}")
-                        return idx
+                for hw_id, name in cards.items():
+                    if preferred_name.lower() in name.lower():
+                        self.logger.info(f"✅ Found preferred device: {name} -> plughw:{hw_id}")
+                        return f"plughw:{hw_id}"
+
+            # 2. Look for "USB"
+            for hw_id, name in cards.items():
+                if "usb" in name.lower():
+                    self.logger.info(f"✅ Found USB Microphone: {name} -> plughw:{hw_id}")
+                    return f"plughw:{hw_id}"
             
-            # Priority 1: USB PnP Sound Device (common on Raspberry Pi)
-            for idx, device in input_devices:
-                name_lower = device['name'].lower()
-                if "usb pnp sound device" in name_lower or \
-                   ("usb" in name_lower and "audio" in name_lower and "sysdefault" not in name_lower):
-                    self.logger.info(f"✅ Found USB Microphone: '{device['name']}' at index {idx}")
-                    return idx
-            
-            # Priority 2: Any USB device
-            for idx, device in input_devices:
-                if "usb" in device['name'].lower() and "sysdefault" not in device['name'].lower():
-                    self.logger.info(f"✅ Found USB device: '{device['name']}' at index {idx}")
-                    return idx
-            
-            # Priority 3: Default device
-            self.logger.warning("⚠️ No USB mic found, using system default")
-            return None  # None = use system default
+            # 3. Fallback to default (OS decides)
+            self.logger.warning("⚠️ No USB mic found. Using system default 'default'")
+            return "default"
             
         except Exception as e:
-            self.logger.error(f"❌ Error finding audio device: {e}")
-            return None
-    
+            self.logger.error(f"❌ Error finding ALSA devices: {e}")
+            return "default"
+
     def record(self, 
                timeout: int = 30,
                silence_duration: float = 1.5,
                min_speech_duration: float = 0.5) -> Optional[bytes]:
         """
-        Record audio with Voice Activity Detection
-        
-        Args:
-            timeout: Maximum recording time in seconds
-            silence_duration: Seconds of silence to stop recording
-            min_speech_duration: Minimum speech duration to consider valid
-            
-        Returns:
-            Raw audio bytes (16-bit PCM) or None if no speech detected
+        Record audio using 'arecord' subprocess
         """
+        process = None
         try:
-            self.logger.info("🎯 Listening... (Speak naturally)")
+            self.logger.info(f"🎯 Listening on {self.device_id}...")
             print("🎯 Listening... (Speak naturally)")
+            
+            # Command: arecord -D plughw:1,0 -f S16_LE -r 16000 -c 1 -t raw
+            cmd = [
+                'arecord',
+                '-D', self.device_id,
+                '-f', 'S16_LE',
+                '-r', str(self.config.sample_rate),
+                '-c', str(self.config.channels),
+                '-t', 'raw',
+                '-q'  # Quiet mode
+            ]
+            
+            # Start recording process
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                bufsize=self.chunk_size
+            )
             
             start_time = time.time()
             audio_frames = []
             speech_frames = 0
             silence_frames = 0
-            silence_threshold = int(silence_duration * 1000 / self.config.chunk_duration_ms)
-            min_speech_frames = int(min_speech_duration * 1000 / self.config.chunk_duration_ms)
             
-            # Start recording stream
-            with sd.InputStream(
-                device=self.device_index,
-                channels=self.config.channels,
-                samplerate=self.config.sample_rate,
-                dtype=self.config.dtype,
-                blocksize=self.chunk_size
-            ) as stream:
+            # Convert durations to frame counts
+            bytes_per_chunk = self.chunk_size
+            # Each chunk is chunk_duration_ms (e.g. 30ms)
+            chunk_ms = self.config.chunk_duration_ms
+            
+            silence_threshold = int(silence_duration * 1000 / chunk_ms)
+            min_speech_threshold = int(min_speech_duration * 1000 / chunk_ms)
+            
+            has_started_speaking = False
+
+            while True:
+                # Check timeout
+                if time.time() - start_time > timeout:
+                    print("⏱️ Timeout")
+                    break
+
+                # Read raw bytes from stdout
+                data = process.stdout.read(bytes_per_chunk)
+                if not data or len(data) != bytes_per_chunk:
+                    break
                 
-                while True:
-                    # Check timeout
-                    if time.time() - start_time > timeout:
-                        self.logger.warning("⏱️ Recording timeout")
-                        print("⏱️ No speech within timeout")
-                        return None
-                    
-                    # Read audio chunk
-                    audio_chunk, overflowed = stream.read(self.chunk_size)
-                    
-                    if overflowed:
-                        self.logger.warning("⚠️ Audio buffer overflow (dropped frames)")
-                    
-                    # Convert to bytes for VAD
-                    audio_bytes = audio_chunk.tobytes()
-                    audio_frames.append(audio_bytes)
-                    
-                    # Voice Activity Detection
-                    try:
-                        is_speech = self.vad.is_speech(audio_bytes, self.config.sample_rate)
-                    except Exception as e:
-                        # VAD can fail on very quiet audio, treat as silence
-                        is_speech = False
-                    
-                    if is_speech:
-                        speech_frames += 1
-                        silence_frames = 0
-                    else:
-                        silence_frames += 1
-                    
-                    # Stop if we have enough speech and then silence
-                    if speech_frames >= min_speech_frames and silence_frames >= silence_threshold:
-                        duration = time.time() - start_time
-                        self.logger.info(f"✅ Got it! ({duration:.1f}s) Processing...")
-                        print(f"✅ Got it! ({duration:.1f}s) Processing...")
+                audio_frames.append(data)
+                
+                # VAD Check
+                try:
+                    is_speech = self.vad.is_speech(data, self.config.sample_rate)
+                except:
+                    is_speech = False
+                
+                if is_speech:
+                    if not has_started_speaking:
+                        print("🗣️ Speech detected...")
+                        has_started_speaking = True
+                    speech_frames += 1
+                    silence_frames = 0
+                elif has_started_speaking:
+                    silence_frames += 1
+                
+                # Stop if we had speech and now silence
+                if has_started_speaking and silence_frames > silence_threshold:
+                    if speech_frames >= min_speech_threshold:
+                        print(f"✅ Capture complete ({len(audio_frames) * chunk_ms / 1000:.1f}s)")
                         break
+                    else:
+                        # False alarm / noise
+                        has_started_speaking = False
+                        speech_frames = 0
+                        silence_frames = 0
+                        audio_frames = [] # Reset buffer
+
+            # Cleanup
+            process.terminate()
             
-            # Check if we got any speech
-            if speech_frames < min_speech_frames:
-                self.logger.warning("⚠️ No speech detected (too short or too quiet)")
-                print("⚠️ No speech detected")
+            if speech_frames >= min_speech_threshold:
+                return b''.join(audio_frames)
+            else:
                 return None
-            
-            # Combine all audio frames
-            audio_data = b''.join(audio_frames)
-            return audio_data
-            
+
         except Exception as e:
             self.logger.error(f"❌ Recording error: {e}")
-            print(f"❌ Recording error: {e}")
             return None
-    
-    def test_record(self, duration: float = 3.0) -> Optional[np.ndarray]:
-        """
-        Simple test recording without VAD (for debugging)
-        
-        Args:
-            duration: Recording duration in seconds
-            
-        Returns:
-            NumPy array of audio samples or None on error
-        """
+        finally:
+            if process:
+                process.terminate()
+                try:
+                    process.wait(timeout=0.5)
+                except:
+                    process.kill()
+
+    def test_record(self, duration: float = 3.0) -> Optional[bytes]:
+        """Simple timed recording"""
         try:
-            self.logger.info(f"🎙️ Test recording for {duration}s...")
-            print(f"🎙️ Recording for {duration}s...")
+            print(f"🎙️ Recording for {duration}s on {self.device_id}...")
             
-            audio = sd.rec(
-                int(duration * self.config.sample_rate),
-                samplerate=self.config.sample_rate,
-                channels=self.config.channels,
-                dtype=self.config.dtype,
-                device=self.device_index
-            )
-            sd.wait()
+            cmd = [
+                'arecord',
+                '-D', self.device_id,
+                '-f', 'S16_LE',
+                '-r', str(self.config.sample_rate),
+                '-c', str(self.config.channels),
+                '-t', 'raw',
+                '-d', str(int(duration)), # Duration in seconds
+                '-q'
+            ]
             
-            self.logger.info("✅ Test recording complete")
-            print("✅ Recording complete")
-            return audio.flatten()
+            result = subprocess.run(cmd, capture_output=True)
             
+            if result.returncode == 0:
+                print(f"✅ Success! Captured {len(result.stdout)} bytes")
+                return result.stdout
+            else:
+                print(f"❌ Error: {result.stderr.decode()}")
+                return None
+                
         except Exception as e:
-            self.logger.error(f"❌ Test recording error: {e}")
-            print(f"❌ Error: {e}")
+            print(f"❌ Test error: {e}")
             return None
     
     def get_device_info(self) -> dict:
-        """Get information about the current audio device"""
-        try:
-            if self.device_index is None:
-                return sd.query_devices(kind='input')
-            else:
-                return sd.query_devices(self.device_index)
-        except Exception as e:
-            self.logger.error(f"❌ Error getting device info: {e}")
-            return {}
-    
+        """Mock info for compatibility"""
+        return {"name": self.device_id}
+
     @staticmethod
     def list_devices():
-        """List all available audio devices"""
-        print("\n🎧 Available Audio Devices:")
-        print("=" * 60)
-        devices = sd.query_devices()
-        for i, device in enumerate(devices):
-            if device['max_input_channels'] > 0:
-                print(f"[{i}] {device['name']}")
-                print(f"    Inputs: {device['max_input_channels']}, "
-                      f"Sample Rate: {device['default_samplerate']}Hz")
-        print("=" * 60)
+        """Print available ALSA devices"""
+        subprocess.run(['arecord', '-l'])
