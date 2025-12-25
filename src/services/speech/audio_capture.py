@@ -87,6 +87,38 @@ class AudioCapture:
             
             has_started_speaking = False
 
+            # --- DYNAMIC CALIBRATION ---
+            # Listen for first ~500ms to determine noise floor
+            calibration_chunks = 15 # approx 450ms
+            noise_energy_sum = 0
+            
+            print("Adjusting to background noise...", end="", flush=True)
+            for _ in range(calibration_chunks):
+                data = process.stdout.read(bytes_per_chunk)
+                if not data: break
+                rms = audioop.rms(data, 2)
+                noise_energy_sum += rms
+                # Keep these frames so we don't lose early speech if they start IMMEDIATELY
+                # but valid speech usually doesn't start in first 0.1s of listening
+                
+            avg_noise = noise_energy_sum / calibration_chunks
+            
+            # Set threshold significantly above noise floor
+            # If noise is 23000, we need threshold around 25000?
+            # Or is 23000 DC offset?
+            # Safe margin: Noise * 1.2 + constant
+            dynamic_threshold = int(avg_noise * 1.2) + 300
+            
+            # Cap the threshold to avoid blocking everything if noise is insane
+            # Max possible RMS for 16-bit is ~32767. 
+            if dynamic_threshold > 30000:
+                print(f"\n⚠️ High Noise detected ({int(avg_noise)}). Clamping threshold.")
+                dynamic_threshold = 30000
+                
+            print(f" Done. (Noise: {int(avg_noise)} -> Threshold: {dynamic_threshold})")
+            
+            # ---------------------------
+
             while True:
                 # Check timeout
                 if time.time() - start_time > timeout:
@@ -103,9 +135,9 @@ class AudioCapture:
                 # Energy Check (Gate)
                 rms = audioop.rms(data, 2)
                 
-                # VAD Check (only if energy is above threshold)
+                # VAD Check (only if energy is above calibrated threshold)
                 is_speech = False
-                if rms > self.config.energy_threshold:
+                if rms > dynamic_threshold:
                     try:
                         is_speech = self.vad.is_speech(data, self.config.sample_rate)
                     except:
