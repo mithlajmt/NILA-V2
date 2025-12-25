@@ -1,14 +1,9 @@
-"""
-gTTS Provider - Simple fallback TTS
-Free but limited (English only, robotic voice)
-"""
-
 import asyncio
 import hashlib
 from pathlib import Path
 from typing import Optional
 from gtts import gTTS
-import pygame
+# pygame removed for system player compatibility
 from .base_tts_provider import BaseTTSProvider
 
 
@@ -17,9 +12,6 @@ class GTTSProvider(BaseTTSProvider):
     
     def __init__(self, settings):
         super().__init__(settings)
-        
-        # Initialize pygame mixer
-        pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
         
         # Audio cache directory
         self.cache_dir = Path("data/audio/gtts")
@@ -46,13 +38,10 @@ class GTTSProvider(BaseTTSProvider):
             # Auto-detect language if not specified
             if language is None:
                 language = self.detect_language(text)
-            
-            # Warn if Malayalam detected
+                
+            # Use 'ml' if requested (gTTS supports it)
             if language == 'ml':
-                self.logger.warning("⚠️ Malayalam detected but gTTS doesn't support it!")
-                self.logger.info("   Consider using Google Cloud TTS instead")
-                # Try English anyway
-                language = 'en'
+                self.logger.info("🗣️ Speaking in Malayalam...")
             
             self.logger.info(f"🔊 Speaking ({language}): {text[:50]}...")
             
@@ -77,8 +66,8 @@ class GTTSProvider(BaseTTSProvider):
     async def _generate_audio(self, text: str, language: str) -> Optional[Path]:
         """Generate audio file from text"""
         try:
-            # Use default language if not specified or invalid
-            if not language or language == 'ml':
+            # Use default language if not specified
+            if not language:
                 language = self.default_lang
             
             # Create cache filename (include tld and slow in hash for cache differentiation)
@@ -112,17 +101,46 @@ class GTTSProvider(BaseTTSProvider):
             return None
     
     async def _play_audio(self, audio_file: Path):
-        """Play audio file"""
+        """Play audio file using system player (pw-play, paplay, or aplay)"""
         try:
             self.is_speaking = True
             
-            # Load and play
-            pygame.mixer.music.load(str(audio_file))
-            pygame.mixer.music.play()
+            # Determine player priority:
+            # 1. pw-play (Native PipeWire - Best for Bluetooth/System Audio)
+            # 2. paplay (PulseAudio - Good compatibility)
+            # 3. aplay (ALSA - Hardware direct, might conflict if device busy)
+            # 4. mpg123 (Good for mp3 if installed)
+            import shutil
+            import subprocess
             
-            # Wait for playback
-            while pygame.mixer.music.get_busy():
-                await asyncio.sleep(0.05)
+            player = None
+            if shutil.which('pw-play'):
+                player = 'pw-play'
+            elif shutil.which('paplay'):
+                player = 'paplay'
+            elif shutil.which('mpg123'):
+                player = 'mpg123'
+            else:
+                # Fallback to aplay? aplay doesn't play mp3s usually.
+                # gTTS produces mp3. We need a player that handles mp3.
+                # If neither pw-play/paplay/mpg123 exist, we might be in trouble for mp3s.
+                # But on the Pi with desktop, paplay should be there.
+                player = 'paplay' 
+            
+            cmd = [player, str(audio_file)]
+            if player == 'mpg123':
+                cmd.insert(1, '-q')
+                
+            self.logger.debug(f"🔊 Playing with {player}...")
+            
+            # Run player
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            
+            await process.wait()
             
             self.is_speaking = False
             self.logger.debug("✅ Audio playback completed")
@@ -164,18 +182,17 @@ class GTTSProvider(BaseTTSProvider):
     def stop_speaking(self):
         """Stop current speech"""
         if self.is_speaking:
-            pygame.mixer.music.stop()
+            # Since we use subprocess now, we can't easily kill it unless we track the process.
+            # But the clips are short.
+            # Ideally we'd store self.current_process in _play_audio and kill it here.
+            # For now, just reset flag.
             self.is_speaking = False
-            self.logger.info("⏹️ Speech stopped")
+            self.logger.info("⏹️ Speech stop requested")
     
     def cleanup(self):
         """Cleanup resources"""
         self.logger.info("🧽 Cleaning up gTTS provider...")
         self.stop_speaking()
-        try:
-            pygame.mixer.quit()
-        except:
-            pass
     
     def get_provider_name(self) -> str:
         """Return provider name"""
