@@ -18,15 +18,15 @@ class AudioConfig:
 
 class AudioCapture:
     """
-    Pure ALSA Audio Capture using 'arecord'
+    PipeWire Audio Capture using 'parecord'
     
-    Robust for Raspberry Pi robots:
-    - Bypasses PipeWire/PulseAudio complexities
-    - Uses native kernel drivers via ALSA
-    - Zero latency, no timeouts
+    Robust for Raspberry Pi 5 with Bluetooth:
+    - Uses PipeWire/PulseAudio stack (native to Bookworm)
+    - Compatible with Bluetooth speakers (no "Device Busy" errors)
+    - Full-Duplex capable
     """
     
-    def __init__(self, config: Optional[AudioConfig] = None, device_name: str = ""):
+    def __init__(self, config: Optional[AudioConfig] = None, device_name: str = "default"):
         self.config = config or AudioConfig()
         self.logger = logging.getLogger(__name__)
         
@@ -37,72 +37,30 @@ class AudioCapture:
         # 16-bit = 2 bytes per sample
         self.chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000) * 2
         
-        # Find the hardware device string (e.g. "plughw:1,0")
-        self.device_id = self._find_alsa_device(device_name)
+        # Use default PipeWire source
+        self.device_id = "default (PipeWire)"
         
-        self.logger.info(f"🎙️ AudioCapture initialized (device={self.device_id}, rate={self.config.sample_rate}Hz)")
-
-    def _find_alsa_device(self, preferred_name: str = "") -> str:
-        """Parse 'arecord -l' to find the USB microphone card"""
-        try:
-            # Run arecord -l to list capture devices
-            result = subprocess.run(['arecord', '-l'], capture_output=True, text=True)
-            output = result.stdout
-            
-            # Regex to find card and device numbers
-            # Example: card 2: Device [USB PnP Sound Device], device 0: USB Audio [USB Audio]
-            cards = {}
-            for line in output.split('\n'):
-                match = re.search(r'card (\d+):.*?\[(.*?)\], device (\d+):', line)
-                if match:
-                    card_idx = match.group(1)
-                    name = match.group(2)
-                    dev_idx = match.group(3)
-                    cards[f"{card_idx},{dev_idx}"] = name
-                    self.logger.info(f"   Found ALSA Device: card {card_idx}, dev {dev_idx} [{name}]")
-
-            # 1. Try preferred name
-            if preferred_name:
-                for hw_id, name in cards.items():
-                    if preferred_name.lower() in name.lower():
-                        self.logger.info(f"✅ Found preferred device: {name} -> plughw:{hw_id}")
-                        return f"plughw:{hw_id}"
-
-            # 2. Look for "USB"
-            for hw_id, name in cards.items():
-                if "usb" in name.lower():
-                    self.logger.info(f"✅ Found USB Microphone: {name} -> plughw:{hw_id}")
-                    return f"plughw:{hw_id}"
-            
-            # 3. Fallback to default (OS decides)
-            self.logger.warning("⚠️ No USB mic found. Using system default 'default'")
-            return "default"
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error finding ALSA devices: {e}")
-            return "default"
+        self.logger.info(f"🎙️ AudioCapture initialized via PipeWire (rate={self.config.sample_rate}Hz)")
 
     def record(self, 
                timeout: int = 30,
                silence_duration: float = 1.0,
                min_speech_duration: float = 0.5) -> Optional[bytes]:
         """
-        Record audio using 'arecord' subprocess
+        Record audio using 'parecord' subprocess
         """
         process = None
         try:
-            self.logger.info(f"🎯 Listening on {self.device_id}...")
+            self.logger.info(f"🎯 Listening via PipeWire...")
             print("🎯 Listening... (Speak naturally)")
             
-            # Command: arecord -D plughw:1,0 -f S16_LE -r 16000 -c 1 -t raw
+            # Command: parecord --format=s16le --rate=16000 --channels=1 --raw
             cmd = [
-                'arecord',
-                '-D', self.device_id,
-                '-f', 'S16_LE',
-                '-r', str(self.config.sample_rate),
-                '-c', str(self.config.channels),
-                '-t', 'raw',
-                '-q'  # Quiet mode
+                'parecord',
+                '--format=s16le',
+                f'--rate={self.config.sample_rate}',
+                f'--channels={self.config.channels}',
+                '--raw',
             ]
             
             # Start recording process
@@ -190,26 +148,30 @@ class AudioCapture:
     def test_record(self, duration: float = 3.0) -> Optional[bytes]:
         """Simple timed recording"""
         try:
-            print(f"🎙️ Recording for {duration}s on {self.device_id}...")
+            print(f"🎙️ Recording for {duration}s via PipeWire...")
             
             cmd = [
-                'arecord',
-                '-D', self.device_id,
-                '-f', 'S16_LE',
-                '-r', str(self.config.sample_rate),
-                '-c', str(self.config.channels),
-                '-t', 'raw',
-                '-d', str(int(duration)), # Duration in seconds
-                '-q'
+                'parecord',
+                '--format=s16le',
+                f'--rate={self.config.sample_rate}',
+                f'--channels={self.config.channels}',
+                '--raw',
             ]
             
-            result = subprocess.run(cmd, capture_output=True)
+            # Need to run with a duration limit, parecord doesn't have -d flag like arecord
+            # We must use 'timeout' cmd or manual kill
             
-            if result.returncode == 0:
-                print(f"✅ Success! Captured {len(result.stdout)} bytes")
-                return result.stdout
+            # actually we can just capture output for N seconds
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            time.sleep(duration)
+            process.terminate()
+            stdout, stderr = process.communicate()
+            
+            if stdout:
+                print(f"✅ Success! Captured {len(stdout)} bytes")
+                return stdout
             else:
-                print(f"❌ Error: {result.stderr.decode()}")
+                print(f"❌ Error: {stderr.decode() if stderr else 'No data'}")
                 return None
                 
         except Exception as e:
@@ -218,9 +180,9 @@ class AudioCapture:
     
     def get_device_info(self) -> dict:
         """Mock info for compatibility"""
-        return {"name": self.device_id}
+        return {"name": "PipeWire Default"}
 
     @staticmethod
     def list_devices():
-        """Print available ALSA devices"""
-        subprocess.run(['arecord', '-l'])
+        """Print available PipeWire sources"""
+        subprocess.run(['pactl', 'list', 'short', 'sources'])
