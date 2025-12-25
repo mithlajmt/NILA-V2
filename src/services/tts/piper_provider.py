@@ -181,9 +181,16 @@ class PiperTTSProvider(BaseTTSProvider):
         try:
             self.is_speaking = True
             
-            # Start audio playback via ALSA (aplay)
-            # -q = quiet
-            process = subprocess.Popen(['aplay', '-q', str(audio_file)])
+            # Determine player: use 'paplay' (PulseAudio) if available for Bluetooth support, else 'aplay'
+            import shutil
+            player = 'paplay' if shutil.which('paplay') else 'aplay'
+            
+            cmd = [player, str(audio_file)]
+            if player == 'aplay':
+                cmd.insert(1, '-q')  # Quiet mode for aplay
+                
+            self.logger.debug(f"🔊 Playing with {player}...")
+            process = subprocess.Popen(cmd)
             
             # Start Lip Sync Loop
             start_time = time.time()
