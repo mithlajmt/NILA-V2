@@ -3,6 +3,7 @@ import subprocess
 import threading
 import time
 import re
+import audioop
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 import webrtcvad
@@ -14,7 +15,7 @@ class AudioConfig:
     channels: int = 1  # Mono
     chunk_duration_ms: int = 30  # VAD frame size (10, 20, or 30ms)
     vad_aggressiveness: int = 3  # 0-3, higher = more aggressive (filters more noise)
-
+    energy_threshold: int = 300  # Minimum RMS amplitude to consider as speech
 
 class AudioCapture:
     """
@@ -40,7 +41,7 @@ class AudioCapture:
         # Use default PipeWire source
         self.device_id = "default (PipeWire)"
         
-        self.logger.info(f"🎙️ AudioCapture initialized via PipeWire (rate={self.config.sample_rate}Hz)")
+        self.logger.info(f"🎙️ AudioCapture initialized via PipeWire (rate={self.config.sample_rate}Hz, threshold={self.config.energy_threshold})")
 
     def record(self, 
                timeout: int = 30,
@@ -99,15 +100,20 @@ class AudioCapture:
                 
                 audio_frames.append(data)
                 
-                # VAD Check
-                try:
-                    is_speech = self.vad.is_speech(data, self.config.sample_rate)
-                except:
-                    is_speech = False
+                # Energy Check (Gate)
+                rms = audioop.rms(data, 2)
+                
+                # VAD Check (only if energy is above threshold)
+                is_speech = False
+                if rms > self.config.energy_threshold:
+                    try:
+                        is_speech = self.vad.is_speech(data, self.config.sample_rate)
+                    except:
+                        is_speech = False
                 
                 if is_speech:
                     if not has_started_speaking:
-                        print("🗣️ Speech detected...")
+                        print(f"🗣️ Speech detected (Energy: {rms})")
                         has_started_speaking = True
                     speech_frames += 1
                     silence_frames = 0
