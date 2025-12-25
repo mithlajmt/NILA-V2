@@ -181,9 +181,18 @@ class PiperTTSProvider(BaseTTSProvider):
         try:
             self.is_speaking = True
             
-            # Determine player: use 'paplay' (PulseAudio) if available for Bluetooth support, else 'aplay'
+            # Determine player priority:
+            # 1. pw-play (Native PipeWire - Best for Bluetooth/System Audio)
+            # 2. paplay (PulseAudio - Good compatibility)
+            # 3. aplay (ALSA - Hardware direct, poor for Bluetooth)
             import shutil
-            player = 'paplay' if shutil.which('paplay') else 'aplay'
+            
+            if shutil.which('pw-play'):
+                player = 'pw-play'
+            elif shutil.which('paplay'):
+                player = 'paplay'
+            else:
+                player = 'aplay'
             
             cmd = [player, str(audio_file)]
             if player == 'aplay':
