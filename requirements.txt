@@ -15,6 +15,9 @@ pyserial==3.5  # Required for Arduino communication
 faster-whisper==1.0.1
 numpy==1.26.4
 
+# Deepgram STT (High-quality cloud-based transcription)
+deepgram-sdk>=3.0.0
+
 # Step 3 - LLM Integration (Conversation Intelligence)
 openai==2.7.1
 anthropic==0.8.0

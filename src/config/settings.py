@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = Field(default="", env="ANTHROPIC_API_KEY")
     GOOGLE_API_KEY: str = Field(default="", env="GOOGLE_API_KEY")
     GOOGLE_APPLICATION_CREDENTIALS: str = Field(default="", env="GOOGLE_APPLICATION_CREDENTIALS")  # Path to Google Cloud JSON
+    DEEPGRAM_API_KEY: str = Field(default="", env="DEEPGRAM_API_KEY")  # Deepgram API key for STT
     
     # Service Providers
     SPEECH_PROVIDER: str = Field(default="whisper", env="SPEECH_PROVIDER")  # "google" or "whisper"
@@ -35,6 +36,11 @@ class Settings(BaseSettings):
     WHISPER_LANGUAGE: str = Field(default="auto", env="WHISPER_LANGUAGE")
     
     WHISPER_DEVICE: str = Field(default="cpu", env="WHISPER_DEVICE")  # "cpu" or "cuda" (for GPU)
+    
+    # Deepgram STT Settings
+    DEEPGRAM_MODEL: str = Field(default="nova-2", env="DEEPGRAM_MODEL")  # "nova-2", "enhanced", "base", "whisper"
+    DEEPGRAM_LANGUAGE: str = Field(default="en-US", env="DEEPGRAM_LANGUAGE")  # Language code or "auto" for detection
+    DEEPGRAM_SMART_FORMAT: bool = Field(default=True, env="DEEPGRAM_SMART_FORMAT")  # Enable smart formatting
     
     # LLM Settings
     LLM_MODEL: str = Field(default="gpt-3.5-turbo", env="LLM_MODEL")  # Model name for the provider
@@ -95,6 +101,7 @@ Language Handling:
     OPENAI_TTS_VOICE: str = Field(default="nova", env="OPENAI_TTS_VOICE")  # "alloy", "echo", "fable", "onyx", "nova", "shimmer"
     OPENAI_TTS_SPEED: float = Field(default=1.0, env="OPENAI_TTS_SPEED")  # 0.25 to 4.0 (1.0 = normal)
     OPENAI_TTS_FORMAT: str = Field(default="mp3", env="OPENAI_TTS_FORMAT")  # "mp3", "opus", "aac", "flac"
+    
 
     # Piper TTS Settings
     PIPER_BINARY_PATH: str = Field(default="tools/piper/piper", env="PIPER_BINARY_PATH")

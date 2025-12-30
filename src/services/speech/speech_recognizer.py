@@ -63,6 +63,25 @@ class SpeechRecognizer:
                 self.logger.warning(f"⚠️ Whisper init failed: {e}. Falling back to Google.")
                 self.provider_name = "google"
                 self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
+        elif self.provider_name == "deepgram":
+            try:
+                from src.services.speech.providers.deepgram_stt_provider import DeepgramSTTProvider
+                
+                # Initialize Deepgram with API key and settings
+                api_key = getattr(self.settings, 'DEEPGRAM_API_KEY', '')
+                if not api_key:
+                    raise ValueError("DEEPGRAM_API_KEY not set in environment")
+                
+                self.provider = DeepgramSTTProvider(
+                    api_key=api_key,
+                    model=getattr(self.settings, 'DEEPGRAM_MODEL', 'nova-2'),
+                    language=getattr(self.settings, 'DEEPGRAM_LANGUAGE', 'en-US'),
+                    smart_format=getattr(self.settings, 'DEEPGRAM_SMART_FORMAT', True)
+                )
+                self.logger.info(f"🎙️ Deepgram provider initialized")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Deepgram init failed: {e}. Falling back to Google.")
+                self.provider_name = "google"
                 self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
         else:
             self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
