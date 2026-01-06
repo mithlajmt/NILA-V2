@@ -79,8 +79,13 @@ class RobotController:
             try:
                 self._print_status_header()
                 
-                # Listen for voice input
-                user_input = await self.speech_recognizer.listen(timeout=30)
+                # Listen for voice input using STREAMING (faster!)
+                try:
+                    user_input = await self.speech_recognizer.listen_streaming(timeout=30)
+                except Exception as stream_err:
+                    # Fallback to batch mode if streaming fails
+                    self.logger.warning(f"⚠️ Streaming failed: {stream_err}, using batch mode")
+                    user_input = await self.speech_recognizer.listen(timeout=30)
                 
                 if user_input:
                     consecutive_failures = 0  # Reset failure counter

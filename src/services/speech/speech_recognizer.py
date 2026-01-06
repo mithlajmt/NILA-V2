@@ -36,14 +36,16 @@ class SpeechRecognizer:
         self.audio_capture = AudioCapture(config=audio_config, device_name=device_name)
 
         # Provider selection
-        self.provider_name = settings.SPEECH_PROVIDER.lower()  # "google" | "whisper"
+        self.provider_name = settings.SPEECH_PROVIDER.lower()  # "google" | "whisper" | "deepgram"
         self.provider: Optional[BaseSTTProvider] = None
+        self.streaming_provider = None  # Separate streaming provider
+        self.use_streaming = getattr(settings, 'DEEPGRAM_USE_STREAMING', True)
         self.last_detected_language: Optional[str] = None
 
         # init provider
         self._init_provider()
 
-        self.logger.info(f"🎙️ STT ready with provider: {self.provider_name}")
+        self.logger.info(f"🎙️ STT ready with provider: {self.provider_name} (streaming: {self.use_streaming})")
 
     # ---------- provider init ----------
     def _init_provider(self):
@@ -72,12 +74,32 @@ class SpeechRecognizer:
                 if not api_key:
                     raise ValueError("DEEPGRAM_API_KEY not set in environment")
                 
+                # Batch provider (fallback)
                 self.provider = DeepgramSTTProvider(
                     api_key=api_key,
                     model=getattr(self.settings, 'DEEPGRAM_MODEL', 'nova-2'),
                     language=getattr(self.settings, 'DEEPGRAM_LANGUAGE', 'en-US'),
                     smart_format=getattr(self.settings, 'DEEPGRAM_SMART_FORMAT', True)
                 )
+                
+                # Streaming provider (faster!)
+                if self.use_streaming:
+                    try:
+                        from src.services.speech.providers.deepgram_streaming_provider import DeepgramStreamingProvider
+                        
+                        self.streaming_provider = DeepgramStreamingProvider(
+                            api_key=api_key,
+                            model=getattr(self.settings, 'DEEPGRAM_MODEL', 'nova-2'),
+                            language=getattr(self.settings, 'DEEPGRAM_LANGUAGE', 'en-US'),
+                            smart_format=getattr(self.settings, 'DEEPGRAM_SMART_FORMAT', True),
+                            interim_results=getattr(self.settings, 'DEEPGRAM_INTERIM_RESULTS', True),
+                            endpointing=getattr(self.settings, 'DEEPGRAM_ENDPOINTING', 300)
+                        )
+                        self.logger.info(f"🚀 Deepgram STREAMING provider initialized")
+                    except Exception as stream_err:
+                        self.logger.warning(f"⚠️ Streaming init failed: {stream_err}. Using batch mode.")
+                        self.use_streaming = False
+                
                 self.logger.info(f"🎙️ Deepgram provider initialized")
             except Exception as e:
                 self.logger.warning(f"⚠️ Deepgram init failed: {e}. Falling back to Google.")
@@ -130,6 +152,66 @@ class SpeechRecognizer:
         except Exception as e:
             self.logger.error(f"❌ listen error: {e}")
             return None
+
+    async def listen_streaming(self, timeout: int = 30) -> Optional[str]:
+        """
+        Listen using STREAMING pipeline (MUCH faster!)
+        
+        This method:
+        1. Streams audio chunks as they arrive (non-blocking)
+        2. Sends to Deepgram WebSocket in real-time
+        3. Gets partial results while user is speaking
+        4. Returns final transcript when complete
+        
+        Args:
+            timeout: Maximum time to wait for speech (seconds)
+            
+        Returns:
+            Transcribed text or None if no speech detected
+        """
+        # Only works with streaming provider
+        if not self.streaming_provider:
+            self.logger.warning("⚠️ Streaming not available, falling back to batch mode")
+            return await self.listen(timeout)
+        
+        try:
+            self.logger.info("🚀 Starting streaming listen...")
+            
+            # Start async audio stream
+            audio_stream = self.audio_capture.stream_audio(
+                chunk_duration_ms=100,
+                timeout=timeout,
+                silence_duration=1.5,
+                min_speech_duration=0.5
+            )
+            
+            # Stream to Deepgram and collect results
+            final_text = None
+            partial_text = ""
+            
+            async for result in self.streaming_provider.stream_transcribe(audio_stream):
+                if result.is_final:
+                    final_text = result.text
+                    self.last_detected_language = result.language
+                    print(f"✅ Final: {final_text}")
+                else:
+                    # Show partial results (optional)
+                    if result.text != partial_text:
+                        partial_text = result.text
+                        print(f"🔄 Partial: {partial_text}", end="\r")
+            
+            if final_text:
+                print()  # New line after partial results
+                return final_text
+            else:
+                self.logger.warning("⚠️ No final transcript received")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ Streaming listen error: {e}")
+            # Fallback to batch mode
+            self.logger.info("🔄 Falling back to batch mode...")
+            return await self.listen(timeout)
 
     def get_last_language(self) -> Optional[str]:
         """Get the language detected in the last transcription"""
