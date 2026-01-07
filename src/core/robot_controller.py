@@ -128,50 +128,84 @@ class RobotController:
         self.logger.info("✅ Step 3 complete!")
     
     async def _handle_conversation(self, user_input: str):
-        """Handle conversation - Get AI response and display"""
+        """
+        Handle conversation - STREAMING MODE
+        Get AI response as a stream of tokens and speak instantly (Sentence Buffering)
+        """
         if not self.llm_enabled or self.llm_service is None:
             # Echo mode fallback
             print(f"\n🤖 ROBOT (Echo Mode): You said '{user_input}'")
             return
         
         try:
-            print(f"\n🧠 Generating AI response...")
-            
-            # Get AI response (pass language if detected by Whisper)
-            # For now, we'll detect language from the speech recognizer context if available
-            language = None  # TODO: Get from speech recognizer if Whisper is used
-            
-            # Start thinking feedback
+            print(f"\n🧠 Thinking...", end="", flush=True)
             self.feedback.start_thinking()
             
-            try:
-                ai_response = await self.llm_service.get_response(user_input, language)
-            finally:
-                # Stop thinking feedback regardless of success/failure
-                self.feedback.stop_thinking()
+            # Sentence buffer
+            sentence_buffer = ""
+            full_response = ""
+            # Sentence delimiters: . ? ! (and handling Malayalam delimiters if needed)
+            delimiters = [".", "?", "!", "\n"]
             
-            if ai_response:
+            is_first_sentence = True
+            
+            # Start streaming
+            try:
+                stream = await self.llm_service.get_response_stream(user_input)
+                
+                print("\n" + "="*60)
+                print("🤖 ROBOT RESPONSE (Streaming):")
+                print("="*60)
+                
+                async for token in stream:
+                    if not token: continue
+                    
+                    print(token, end="", flush=True)
+                    sentence_buffer += token
+                    full_response += token
+                    
+                    # Check for sentence end
+                    # Simple heuristic: if token contains a delimiter
+                    if any(char in token for char in delimiters):
+                        # Find the split point
+                        for delimiter in delimiters:
+                            if delimiter in sentence_buffer:
+                                parts = sentence_buffer.split(delimiter, 1)
+                                if len(parts) >= 2 or (len(parts) == 1 and sentence_buffer.endswith(delimiter)):
+                                    # Found a complete sentence!
+                                    sentence_to_speak = parts[0] + delimiter
+                                    remaining = parts[1] if len(parts) > 1 else ""
+                                    
+                                    # Speak it!
+                                    if sentence_to_speak.strip():
+                                        if is_first_sentence:
+                                            self.feedback.stop_thinking() # Stop thinking LED
+                                            is_first_sentence = False
+                                        
+                                        # Don't await this perfectly, we want to continue buffering
+                                        # BUT: tts.speak is async and might block.
+                                        # Ideally we'd put this in a queue.
+                                        # For now, simplistic approach: await it (simple pipeline)
+                                        # To make it truly parallel, we'd need a separate TTS worker task.
+                                        await self.text_to_speech.speak(sentence_to_speak)
+                                    
+                                    sentence_buffer = remaining
+                                    break
+                
+                # Speak remaining buffer
+                if sentence_buffer.strip():
+                    await self.text_to_speech.speak(sentence_buffer)
+                
+                print("\n" + "="*60)
                 self.stats['llm_responses'] += 1
                 
-                # Display AI response
-                print("\n" + "="*60)
-                print("🤖 ROBOT RESPONSE:")
-                print("="*60)
-                print(f"{ai_response}")
-                print("="*60)
-                
-                # Speak the AI response!
-                print("\n🔊 Speaking response...")
-                await self.text_to_speech.speak(ai_response)
-                
-            else:
-                self.stats['llm_failures'] += 1
-                print("❌ Failed to generate response")
+            finally:
+                self.feedback.stop_thinking()
                 
         except Exception as e:
             self.stats['llm_failures'] += 1
             self.logger.error(f"❌ Conversation error: {e}")
-            print(f"❌ Error: {e}")
+            print(f"\n❌ Error: {e}")
     
     def _print_status_header(self):
         """Print status header for each listening cycle"""

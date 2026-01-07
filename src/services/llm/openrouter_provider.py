@@ -1,7 +1,5 @@
 import logging
-from typing import Optional
-from openai import AsyncOpenAI
-from .base_provider import BaseLLMProvider
+from typing import Optional, AsyncGenerator
 
 class OpenRouterProvider(BaseLLMProvider):
     """OpenRouter provider for LLM responses"""
@@ -43,21 +41,8 @@ class OpenRouterProvider(BaseLLMProvider):
             # Add user message to history
             self.add_to_history("user", user_message)
             
-            # Prepare messages for API
-            messages = [
-                {"role": "system", "content": self.system_prompt}
-            ]
-            
-            # Add conversation history (last N messages)
-            history_to_send = self.get_history(limit=self.max_history)
-            messages.extend(history_to_send)
-            
-            # Add language hint if Malayalam detected
-            if language == "ml":
-                messages.append({
-                    "role": "system",
-                    "content": "Note: The user spoke in Malayalam. You can acknowledge this and respond warmly. Use simple English or basic Malayalam phrases if appropriate."
-                })
+            # Prepare messages (shared logic)
+            messages = self._prepare_messages(language)
             
             # Call OpenRouter API
             self.logger.debug(f"📡 Calling OpenRouter API...")
@@ -67,8 +52,8 @@ class OpenRouterProvider(BaseLLMProvider):
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
                 extra_headers={
-                    "HTTP-Referer": "https://github.com/mithlajmt/NILA-V2", # Optional, for including your app on openrouter.ai rankings.
-                    "X-Title": "NILA-V2", # Optional. Shows in rankings on openrouter.ai.
+                    "HTTP-Referer": "https://github.com/mithlajmt/NILA-V2", 
+                    "X-Title": "NILA-V2",
                 },
             )
             
@@ -80,9 +65,10 @@ class OpenRouterProvider(BaseLLMProvider):
             
             # Update statistics
             self.stats['total_messages'] += 1
-            self.stats['total_tokens_used'] += response.usage.total_tokens
+            if response.usage:
+                self.stats['total_tokens_used'] += response.usage.total_tokens
             
-            self.logger.info(f"✅ Response generated ({response.usage.total_tokens} tokens)")
+            self.logger.info(f"✅ Response generated")
             self.logger.debug(f"📝 Response: {assistant_message[:100]}...")
             
             return assistant_message
@@ -91,6 +77,67 @@ class OpenRouterProvider(BaseLLMProvider):
             self.logger.error(f"❌ OpenRouter API error: {e}")
             self.stats['errors'] += 1
             return self._get_fallback_response()
+
+    async def get_response_stream(self, user_message: str, language: Optional[str] = None) -> AsyncGenerator[str, None]:
+        """Get AI response as a stream of tokens"""
+        try:
+            self.logger.info(f"🧠 Streaming OpenRouter response...")
+            
+            # Add to history
+            self.add_to_history("user", user_message)
+            
+            messages = self._prepare_messages(language)
+            
+            stream = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                stream=True, # Enable streaming!
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/mithlajmt/NILA-V2",
+                    "X-Title": "NILA-V2",
+                },
+            )
+            
+            full_response = ""
+            
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_response += content
+                    yield content
+            
+            # Add full response to history after completion
+            self.add_to_history("assistant", full_response)
+            self.stats['total_messages'] += 1
+            # Note: Streaming usage info is often not sent in chunks, would need estimation
+            
+            self.logger.info("✅ Stream complete")
+            
+        except Exception as e:
+            self.logger.error(f"❌ OpenRouter Streaming error: {e}")
+            self.stats['errors'] += 1
+            yield self._get_fallback_response()
+
+    def _prepare_messages(self, language: Optional[str] = None) -> list:
+        """Helper to prepare message list"""
+        messages = [
+            {"role": "system", "content": self.system_prompt}
+        ]
+        
+        # Add conversation history
+        history_to_send = self.get_history(limit=self.max_history)
+        messages.extend(history_to_send)
+        
+        # Add language hint
+        if language == "ml":
+            messages.append({
+                "role": "system",
+                "content": "Note: The user spoke in Malayalam. Respond in Malayalam script."
+            })
+            
+        return messages
     
     def _get_fallback_response(self) -> str:
         """Fallback response if API fails"""

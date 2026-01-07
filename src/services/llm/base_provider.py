@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, AsyncGenerator
 
 class BaseLLMProvider(ABC):
     """Abstract base class for LLM providers - makes it easy to add new LLMs"""
@@ -28,6 +28,13 @@ class BaseLLMProvider(ABC):
         
         Returns:
             AI-generated response text or None if error
+        """
+        pass
+
+    @abstractmethod
+    async def get_response_stream(self, user_message: str, language: Optional[str] = None) -> AsyncGenerator[str, None]:
+        """
+        Get AI response as a stream of tokens
         """
         pass
     

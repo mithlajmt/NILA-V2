@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, AsyncGenerator
 from .base_provider import BaseLLMProvider
 from .openai_provider import OpenAIProvider
 from .anthropic_provider import AnthropicProvider
@@ -57,6 +57,10 @@ class LLMService:
     async def get_response(self, user_message: str, language: Optional[str] = None) -> Optional[str]:
         """Get AI response - delegates to the active provider"""
         return await self.provider.get_response(user_message, language)
+
+    async def get_response_stream(self, user_message: str, language: Optional[str] = None) -> AsyncGenerator[str, None]:
+        """Get AI response stream - delegates to the active provider"""
+        return self.provider.get_response_stream(user_message, language)
     
     def clear_history(self):
         """Clear conversation history"""
