@@ -137,6 +137,8 @@ class AudioCapture:
                     if is_speech:
                         if not has_started_speaking:
                             print(f"\n🗣️ Speech! (Energy: {rms})", end="", flush=True)
+                            from src.utils.latency import tracker
+                            tracker.track("vad_speech_start", f"Energy: {rms}")
                             has_started_speaking = True
                         
                         speech_frames += 1
@@ -151,6 +153,8 @@ class AudioCapture:
                         if silence_frames > silence_threshold:
                             if speech_frames >= min_speech_threshold:
                                 print(f"\n✅ Capture complete ({speech_frames * chunk_duration_ms / 1000:.1f}s speech)")
+                                from src.utils.latency import tracker
+                                tracker.track("vad_speech_end", f"Duration: {speech_frames * chunk_duration_ms / 1000:.1f}s")
                                 break
                             else:
                                 # Start over - too short (noise click)
