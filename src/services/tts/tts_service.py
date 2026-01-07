@@ -27,15 +27,21 @@ class TTSService:
         # Create provider based on settings
         self._initialize_provider()
         
-        # Start background worker
+    async def start(self):
+        """Start the background worker"""
         self._start_worker()
         
     def _start_worker(self):
         """Start the background playback worker"""
         import asyncio
         if self.worker_task is None or self.worker_task.done():
-            self.worker_task = asyncio.create_task(self._playback_worker())
-            self.logger.info("🎵 TTS Background Worker started")
+            # Ensure we have a running loop
+            try:
+                loop = asyncio.get_running_loop()
+                self.worker_task = loop.create_task(self._playback_worker())
+                self.logger.info("🎵 TTS Background Worker started")
+            except RuntimeError:
+                self.logger.error("❌ Could not start TTS worker: No event loop running")
             
     async def _playback_worker(self):
         """Worker that plays audio files from queue one by one"""

@@ -68,6 +68,9 @@ class RobotController:
         
         self.logger.info("🚀 Robot starting Step 3...")
         
+        # Start TTS Service (Background Worker)
+        await self.text_to_speech.start()
+        
         # Step 3: Speak greeting
         await self._speak_greeting()
         
