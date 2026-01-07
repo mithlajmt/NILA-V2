@@ -128,7 +128,7 @@ class SpeechRecognizer:
                 None,
                 lambda: self.audio_capture.record(
                     timeout=timeout,
-                    silence_duration=1.5,
+                    silence_duration=0.5, # Reduced from 1.5s for snappy response
                     min_speech_duration=0.5
                 )
             )
@@ -157,17 +157,8 @@ class SpeechRecognizer:
         """
         Listen using STREAMING pipeline (MUCH faster!)
         
-        This method:
-        1. Streams audio chunks as they arrive (non-blocking)
-        2. Sends to Deepgram WebSocket in real-time
-        3. Gets partial results while user is speaking
-        4. Returns final transcript when complete
-        
         Args:
             timeout: Maximum time to wait for speech (seconds)
-            
-        Returns:
-            Transcribed text or None if no speech detected
         """
         # Only works with streaming provider
         if not self.streaming_provider:
@@ -175,33 +166,35 @@ class SpeechRecognizer:
             return await self.listen(timeout)
         
         try:
-            self.logger.info("🚀 Starting streaming listen...")
+            self.logger.info("🚀 Starting streaming listen (Fast Mode)...")
             
-            # Start async audio stream
+            # Start async audio stream with 30ms chunks for VAD and fast response
             audio_stream = self.audio_capture.stream_audio(
-                chunk_duration_ms=100,
+                chunk_duration_ms=30, # Match VAD
                 timeout=timeout,
-                silence_duration=1.5,
-                min_speech_duration=0.5
+                silence_duration=0.5, # Fast cutoff
+                min_speech_duration=0.3
             )
             
             # Stream to Deepgram and collect results
             final_text = None
             partial_text = ""
             
+            print("🔴 Listening (Stream)...")
+            
             async for result in self.streaming_provider.stream_transcribe(audio_stream):
                 if result.is_final:
                     final_text = result.text
                     self.last_detected_language = result.language
-                    print(f"✅ Final: {final_text}")
+                    print(f"\r✅ Final: {final_text}                                ")
                 else:
                     # Show partial results (optional)
                     if result.text != partial_text:
                         partial_text = result.text
-                        print(f"🔄 Partial: {partial_text}", end="\r")
+                        # Overwrite line
+                        print(f"\r⚡ {partial_text}...", end="", flush=True)
             
             if final_text:
-                print()  # New line after partial results
                 return final_text
             else:
                 self.logger.warning("⚠️ No final transcript received")
@@ -209,6 +202,8 @@ class SpeechRecognizer:
                 
         except Exception as e:
             self.logger.error(f"❌ Streaming listen error: {e}")
+            import traceback
+            traceback.print_exc()
             # Fallback to batch mode
             self.logger.info("🔄 Falling back to batch mode...")
             return await self.listen(timeout)

@@ -45,40 +45,35 @@ class AudioCapture:
         self.logger.info(f"🎙️ AudioCapture initialized via PipeWire (rate={self.config.sample_rate}Hz, threshold={self.config.energy_threshold})")
 
     async def stream_audio(self, 
-                          chunk_duration_ms: int = 100,
+                          chunk_duration_ms: int = 30, # Match VAD frame size (30ms)
                           timeout: float = 30.0,
-                          silence_duration: float = 1.5,
-                          min_speech_duration: float = 0.5) -> AsyncGenerator[bytes, None]:
+                          silence_duration: float = 0.7, # Fast cutoff
+                          min_speech_duration: float = 0.2) -> AsyncGenerator[bytes, None]: 
         """
-        Stream audio chunks asynchronously using sounddevice
-        
-        This is NON-BLOCKING and works with PipeWire (no ALSA conflicts!)
-        
-        Args:
-            chunk_duration_ms: Size of each audio chunk in milliseconds
-            timeout: Maximum time to listen (seconds)
-            silence_duration: Stop after this many seconds of silence
-            min_speech_duration: Minimum speech duration to consider valid
-            
-        Yields:
-            Audio chunks (bytes) as they arrive from microphone
+        Stream audio chunks asynchronously using sounddevice.
+        Optimized for LOW LATENCY.
         """
         try:
             import sounddevice as sd
             import numpy as np
             
-            self.logger.info("🎯 Starting async audio stream...")
-            print("🎯 Listening... (Speak naturally)")
+            self.logger.info("🎯 Starting async audio stream (Low Latency Mode)...")
+            print(f"🎯 Listening... (Silence cutoff: {silence_duration}s)")
             
-            # Calculate chunk size in samples
+            # Helper to calculate chunk sizes
+            # VAD supports 10, 20, 30ms. We enforce 30ms for best balance.
+            if chunk_duration_ms not in [10, 20, 30]:
+                chunk_duration_ms = 30 
+                
             chunk_samples = int(self.config.sample_rate * chunk_duration_ms / 1000)
             
-            # Create input stream (non-blocking!)
+            # Create input stream
             stream = sd.InputStream(
                 samplerate=self.config.sample_rate,
                 channels=self.config.channels,
                 dtype='int16',
-                blocksize=chunk_samples
+                blocksize=chunk_samples,
+                latency='low' # Request low latency
             )
             
             start_time = time.time()
@@ -86,100 +81,89 @@ class AudioCapture:
             silence_frames = 0
             has_started_speaking = False
             
-            # Calculate frame thresholds
+            # Calculate thresholds based on 30ms chunks
+            # 1 second = 33.3 chunks roughly
             frames_per_second = 1000 / chunk_duration_ms
             silence_threshold = int(silence_duration * frames_per_second)
             min_speech_threshold = int(min_speech_duration * frames_per_second)
             
             # Dynamic noise calibration
-            calibration_chunks = 10
+            calibration_chunks = 10 # 300ms calibration
             noise_energy_sum = 0
             
             with stream:
-                print("Adjusting to background noise...", end="", flush=True)
+                print("Adjusting to noise...", end="", flush=True)
                 
                 # Calibration phase
                 for _ in range(calibration_chunks):
                     chunk, overflowed = stream.read(chunk_samples)
-                    if overflowed:
-                        self.logger.warning("⚠️ Audio buffer overflow during calibration")
+                    if overflowed: pass
                     
                     chunk_bytes = chunk.tobytes()
                     rms = audioop.rms(chunk_bytes, 2)
                     noise_energy_sum += rms
                 
                 avg_noise = noise_energy_sum / calibration_chunks
-                dynamic_threshold = int(avg_noise * 1.2) + 300
+                # Adaptive threshold: slightly lower margin for sensitivity
+                dynamic_threshold = int(avg_noise * 1.3) + 100
                 
-                if dynamic_threshold > 30000:
-                    self.logger.warning(f"⚠️ High noise detected ({int(avg_noise)}). Clamping threshold.")
-                    dynamic_threshold = 30000
+                if dynamic_threshold > 20000: dynamic_threshold = 20000 # Safety cap
                 
                 print(f" Done. (Noise: {int(avg_noise)} → Threshold: {dynamic_threshold})")
                 
                 # Main streaming loop
                 while True:
-                    # Check timeout
                     if time.time() - start_time > timeout:
                         print("⏱️ Timeout")
                         break
                     
-                    # Read audio chunk (non-blocking!)
+                    # Read (blocking for 30ms is fine here as it's the generator source)
                     chunk, overflowed = stream.read(chunk_samples)
                     if overflowed:
-                        self.logger.warning("⚠️ Audio buffer overflow")
+                        self.logger.debug("⚠️ Overflow")
                     
                     chunk_bytes = chunk.tobytes()
-                    
-                    # Energy check
                     rms = audioop.rms(chunk_bytes, 2)
                     
-                    # VAD check (only if energy above threshold)
+                    # VAD Check
                     is_speech = False
                     if rms > dynamic_threshold:
                         try:
-                            # VAD requires specific chunk sizes (10, 20, or 30ms)
-                            # Resample if needed
-                            vad_chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000) * 2
-                            if len(chunk_bytes) >= vad_chunk_size:
-                                vad_chunk = chunk_bytes[:vad_chunk_size]
-                                is_speech = self.vad.is_speech(vad_chunk, self.config.sample_rate)
-                        except Exception as e:
-                            self.logger.debug(f"VAD error: {e}")
+                            # 30ms chunk is valid for VAD directly
+                            is_speech = self.vad.is_speech(chunk_bytes, self.config.sample_rate)
+                        except Exception:
                             is_speech = False
                     
                     if is_speech:
                         if not has_started_speaking:
-                            print(f"🗣️ Speech detected (Energy: {rms})")
+                            print(f"\n🗣️ Speech! (Energy: {rms})", end="", flush=True)
                             has_started_speaking = True
+                        
                         speech_frames += 1
                         silence_frames = 0
-                        
-                        # Yield audio chunk
                         yield chunk_bytes
                         
                     elif has_started_speaking:
                         silence_frames += 1
-                        # Still yield during silence (for natural pauses)
+                        # Yield silence to allow sentence completion/natural pauses
                         yield chunk_bytes
+                        
+                        if silence_frames > silence_threshold:
+                            if speech_frames >= min_speech_threshold:
+                                print(f"\n✅ Capture complete ({speech_frames * chunk_duration_ms / 1000:.1f}s speech)")
+                                break
+                            else:
+                                # Start over - too short (noise click)
+                                has_started_speaking = False
+                                speech_frames = 0
+                                silence_frames = 0
+                                # print(".", end="", flush=True) # debug noise
                     
-                    # Stop if we had speech and now silence
-                    if has_started_speaking and silence_frames > silence_threshold:
-                        if speech_frames >= min_speech_threshold:
-                            print(f"✅ Capture complete ({speech_frames * chunk_duration_ms / 1000:.1f}s)")
-                            break
-                        else:
-                            # False alarm / noise
-                            self.logger.debug("False alarm, resetting")
-                            has_started_speaking = False
-                            speech_frames = 0
-                            silence_frames = 0
-                    
-                    # Small async yield to prevent blocking
+                    # Yield 0 to allow event loop to breathe (crucial for async)
                     await asyncio.sleep(0)
                     
         except ImportError:
-            self.logger.error("❌ sounddevice not installed. Run: pip install sounddevice")
+            self.logger.error("❌ sounddevice not installed.")
             raise
         except Exception as e:
             self.logger.error(f"❌ Streaming error: {e}")
@@ -188,8 +172,8 @@ class AudioCapture:
 
     def record(self, 
                timeout: int = 30,
-               silence_duration: float = 1.0,
-               min_speech_duration: float = 0.5) -> Optional[bytes]:
+               silence_duration: float = 0.7, # Faster cutoff (was 1.0)
+               min_speech_duration: float = 0.3) -> Optional[bytes]:
         """
         Record audio using 'parecord' subprocess
         """
