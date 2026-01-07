@@ -154,15 +154,22 @@ class RobotController:
             
             # Start streaming
             try:
+                from src.utils.latency import tracker
+                tracker.track("llm_request_start")
                 stream = await self.llm_service.get_response_stream(user_input)
                 
                 print("\n" + "="*60)
                 print("🤖 ROBOT RESPONSE (Streaming):")
                 print("="*60)
                 
+                first_token = True
                 async for token in stream:
                     if not token: continue
                     
+                    if first_token:
+                        tracker.track("llm_first_token")
+                        first_token = False
+
                     print(token, end="", flush=True)
                     sentence_buffer += token
                     full_response += token
@@ -217,6 +224,9 @@ class RobotController:
     
     def _print_status_header(self):
         """Print status header for each listening cycle"""
+        from src.utils.latency import tracker
+        print(tracker.get_report())
+        
         print("\n" + "="*60)
         print("🎯 ROBOT LISTENING MODE" + (" - AI ACTIVE 🧠" if self.llm_enabled else " - ECHO MODE"))
         print("="*60)

@@ -119,8 +119,10 @@ class SpeechRecognizer:
         Returns:
             Transcribed text or None if no speech detected
         """
+        from src.utils.latency import tracker
         try:
             self.logger.info("🎯 Ready to listen...")
+            tracker.track("stt_listening_start")
             
             # Capture audio (blocking call, run in executor)
             loop = asyncio.get_event_loop()
@@ -136,12 +138,15 @@ class SpeechRecognizer:
             if not audio_bytes:
                 return None
 
+            tracker.track("stt_audio_captured", f"Bytes: {len(audio_bytes)}")
+
             # Transcribe via provider
             assert self.provider is not None, "STT provider not initialized"
             result: STTResult = await self.provider.transcribe(audio_bytes)
             self.last_detected_language = result.language
 
             if result.text:
+                tracker.track("stt_final_transcript", f"Text: {result.text}")
                 print("✅ Transcribed successfully")
                 return result.text
             else:
@@ -167,6 +172,8 @@ class SpeechRecognizer:
         
         try:
             self.logger.info("🚀 Starting streaming listen (Fast Mode)...")
+            from src.utils.latency import tracker
+            tracker.track("stt_listening_start", "Streaming")
             
             # Start async audio stream with 30ms chunks for VAD and fast response
             audio_stream = self.audio_capture.stream_audio(
@@ -184,6 +191,7 @@ class SpeechRecognizer:
             
             async for result in self.streaming_provider.stream_transcribe(audio_stream):
                 if result.is_final:
+                    tracker.track("stt_final_transcript", f"Stream Final: {result.text}")
                     final_text = result.text
                     self.last_detected_language = result.language
                     print(f"\r✅ Final: {final_text}                                ")

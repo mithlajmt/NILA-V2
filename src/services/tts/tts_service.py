@@ -58,6 +58,8 @@ class TTSService:
                 try:
                     if self.provider and audio_path:
                         self.logger.debug(f"▶️ Playing queued item: {text[:20]}...")
+                        from src.utils.latency import tracker
+                        tracker.track("tts_playback_start", f"Playing: {text[:10]}...")
                         await self.provider.play_audio(audio_path)
                 except Exception as e:
                     self.logger.error(f"❌ Playback error in worker: {e}")
@@ -126,6 +128,8 @@ class TTSService:
         Returns:
             True if queued successfully, False if failed to generate
         """
+        from src.utils.latency import tracker
+        
         if not self.provider:
             self.logger.error("❌ No TTS provider initialized")
             return False
@@ -134,11 +138,14 @@ class TTSService:
         # We await generation to ensure we don't queue invalid files
         # But this is still much faster than waiting for playback (3s-10s)
         try:
+            tracker.track("tts_generation_start", f"Generating: {text[:20]}...")
             audio_path = await self.provider.generate_audio(text, language)
+            tracker.track("tts_audio_ready")
             
             if audio_path:
                 # 2. Add to Queue (Instant)
                 self.playback_queue.put_nowait((audio_path, text))
+                tracker.track("tts_request_queued")
                 return True
             else:
                 return False
