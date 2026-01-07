@@ -1,5 +1,7 @@
 import logging
 from typing import Optional, AsyncGenerator
+from openai import AsyncOpenAI
+from .base_provider import BaseLLMProvider
 
 class OpenRouterProvider(BaseLLMProvider):
     """OpenRouter provider for LLM responses"""
