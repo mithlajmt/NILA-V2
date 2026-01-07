@@ -202,6 +202,11 @@ class RobotController:
                 print("\n" + "="*60)
                 self.stats['llm_responses'] += 1
                 
+                # Wait for all audio to finish playing before listening again
+                # This prevents self-listening (hearing own voice)
+                print("⏳ Waiting for speech to finish...")
+                await self.text_to_speech.wait_until_done()
+                
             finally:
                 self.feedback.stop_thinking()
                 

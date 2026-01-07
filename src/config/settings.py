@@ -82,6 +82,12 @@ Language handling:
     OPENAI_TTS_SPEED: float = Field(default=1.0, env="OPENAI_TTS_SPEED")  # 0.25 to 4.0 (1.0 = normal)
     OPENAI_TTS_FORMAT: str = Field(default="mp3", env="OPENAI_TTS_FORMAT")  # "mp3", "opus", "aac", "flac"
     
+    # ElevenLabs TTS Settings
+    ELEVENLABS_API_KEY: str = Field(default="", env="ELEVENLABS_API_KEY")
+    ELEVENLABS_VOICE_ID: str = Field(default="ErXwobaYiN019PkySvjV", env="ELEVENLABS_VOICE_ID") # Default: Antoni (Male)
+    ELEVENLABS_MODEL: str = Field(default="eleven_multilingual_v2", env="ELEVENLABS_MODEL") # Best for Malayalam
+    # Note: For lower latency (but potentially less accent accuracy), try 'eleven_flash_v2_5'
+    
 
     # Piper TTS Settings
     PIPER_BINARY_PATH: str = Field(default="tools/piper/piper", env="PIPER_BINARY_PATH")

@@ -9,6 +9,7 @@ from .base_tts_provider import BaseTTSProvider
 from .gtts_provider import GTTSProvider
 from .openai_tts_provider import OpenAITTSProvider
 from .piper_provider import PiperTTSProvider
+from .elevenlabs_provider import ElevenLabsTTSProvider
 
 
 class TTSService:
@@ -81,6 +82,9 @@ class TTSService:
             
             elif provider_name == "piper":
                 self.provider = PiperTTSProvider(self.settings)
+                
+            elif provider_name == "elevenlabs":
+                self.provider = ElevenLabsTTSProvider(self.settings)
                 
             elif provider_name == "google_cloud":
                 from .google_cloud_tts_provider import GoogleCloudTTSProvider
@@ -176,6 +180,11 @@ class TTSService:
         if self.provider:
             return self.provider.is_speaking
         return False
+        
+    async def wait_until_done(self):
+        """Wait until all queued audio is finished playing"""
+        if self.playback_queue:
+            await self.playback_queue.join()
     
     def switch_provider(self, new_provider: str):
         """
