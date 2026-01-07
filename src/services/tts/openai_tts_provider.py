@@ -70,11 +70,11 @@ class OpenAITTSProvider(BaseTTSProvider):
             await self._check_cache_size()
             
             # Generate audio
-            audio_file = await self._generate_audio(text)
+            audio_file = await self.generate_audio(text)
             
             if audio_file:
                 # Play audio
-                await self._play_audio(audio_file)
+                await self.play_audio(audio_file)
                 return True
             else:
                 self.logger.error("❌ Failed to generate audio")
@@ -84,7 +84,7 @@ class OpenAITTSProvider(BaseTTSProvider):
             self.logger.error(f"❌ OpenAI TTS error: {e}")
             return False
     
-    async def _generate_audio(self, text: str) -> Optional[Path]:
+    async def generate_audio(self, text: str, language: Optional[str] = None) -> Optional[Path]:
         """Generate audio using OpenAI TTS"""
         try:
             # Create cache filename
@@ -122,7 +122,7 @@ class OpenAITTSProvider(BaseTTSProvider):
             self.logger.error(f"❌ Audio generation error: {e}")
             return None
     
-    async def _play_audio(self, audio_file: Path):
+    async def play_audio(self, audio_file: Path):
         """Play audio file"""
         try:
             self.is_speaking = True

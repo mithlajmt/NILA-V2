@@ -19,9 +19,47 @@ class TTSService:
         self.logger = logging.getLogger(__name__)
         self.provider: Optional[BaseTTSProvider] = None
         
+        # Playback Queue for non-blocking TTS
+        import asyncio
+        self.playback_queue = asyncio.Queue()
+        self.worker_task = None
+        
         # Create provider based on settings
         self._initialize_provider()
-    
+        
+        # Start background worker
+        self._start_worker()
+        
+    def _start_worker(self):
+        """Start the background playback worker"""
+        import asyncio
+        if self.worker_task is None or self.worker_task.done():
+            self.worker_task = asyncio.create_task(self._playback_worker())
+            self.logger.info("🎵 TTS Background Worker started")
+            
+    async def _playback_worker(self):
+        """Worker that plays audio files from queue one by one"""
+        import asyncio
+        self.logger.info("🎵 TTS Worker ready to play")
+        
+        try:
+            while True:
+                # Get next item
+                item = await self.playback_queue.get()
+                audio_path, text = item
+                
+                try:
+                    if self.provider and audio_path:
+                        self.logger.debug(f"▶️ Playing queued item: {text[:20]}...")
+                        await self.provider.play_audio(audio_path)
+                except Exception as e:
+                    self.logger.error(f"❌ Playback error in worker: {e}")
+                finally:
+                    self.playback_queue.task_done()
+                    
+        except asyncio.CancelledError:
+            self.logger.info("🛑 TTS Worker cancelled")
+            
     def _initialize_provider(self):
         """Initialize the TTS provider based on settings"""
         provider_name = self.settings.TTS_PROVIDER.lower()
@@ -66,28 +104,58 @@ class TTSService:
     
     async def speak(self, text: str, language: Optional[str] = None) -> bool:
         """
-        Convert text to speech and play
+        Convert text to speech and play (Non-blocking / Queued)
+        
+        This method returns IMMEDIATELY after generation starts.
+        Playback happens in the background.
         
         Args:
             text: The text to speak
             language: Language code ('en', 'ml') or None for auto-detect
             
         Returns:
-            True if successful, False otherwise
+            True if queued successfully, False if failed to generate
         """
         if not self.provider:
             self.logger.error("❌ No TTS provider initialized")
             return False
         
-        return await self.provider.speak(text, language)
-    
+        # 1. Generate Audio (this might take 0.2s - 1.0s)
+        # We await generation to ensure we don't queue invalid files
+        # But this is still much faster than waiting for playback (3s-10s)
+        try:
+            audio_path = await self.provider.generate_audio(text, language)
+            
+            if audio_path:
+                # 2. Add to Queue (Instant)
+                self.playback_queue.put_nowait((audio_path, text))
+                return True
+            else:
+                return False
+        except Exception as e:
+             self.logger.error(f"❌ TTS Generation error: {e}")
+             return False
+
     def stop_speaking(self):
-        """Stop current speech"""
+        """Stop current speech and clear queue"""
+        # 1. Clear queue
+        while not self.playback_queue.empty():
+            try:
+                self.playback_queue.get_nowait()
+                self.playback_queue.task_done()
+            except:
+                break
+                
+        # 2. Stop current provider playback
         if self.provider:
             self.provider.stop_speaking()
     
     def cleanup(self):
         """Cleanup resources"""
+        # Cancel worker
+        if self.worker_task:
+            self.worker_task.cancel()
+            
         if self.provider:
             self.provider.cleanup()
     

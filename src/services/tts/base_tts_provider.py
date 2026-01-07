@@ -6,7 +6,7 @@ This defines the contract that all TTS providers must implement
 from abc import ABC, abstractmethod
 from typing import Optional
 import logging
-
+from pathlib import Path
 
 class BaseTTSProvider(ABC):
     """Abstract base class for TTS providers"""
@@ -28,6 +28,16 @@ class BaseTTSProvider(ABC):
         Returns:
             True if successful, False otherwise
         """
+        pass
+
+    @abstractmethod
+    async def generate_audio(self, text: str, language: Optional[str] = None) -> Optional[Path]:
+        """Generate audio file but do not play it"""
+        pass
+
+    @abstractmethod
+    async def play_audio(self, file_path: Path):
+        """Play the audio file"""
         pass
     
     @abstractmethod

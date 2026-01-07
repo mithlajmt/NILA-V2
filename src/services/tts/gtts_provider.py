@@ -49,11 +49,11 @@ class GTTSProvider(BaseTTSProvider):
             await self._check_cache_size()
             
             # Generate audio
-            audio_file = await self._generate_audio(text, language)
+            audio_file = await self.generate_audio(text, language)
             
             if audio_file:
                 # Play audio
-                await self._play_audio(audio_file)
+                await self.play_audio(audio_file)
                 return True
             else:
                 self.logger.error("❌ Failed to generate audio")
@@ -63,7 +63,7 @@ class GTTSProvider(BaseTTSProvider):
             self.logger.error(f"❌ gTTS error: {e}")
             return False
     
-    async def _generate_audio(self, text: str, language: str) -> Optional[Path]:
+    async def generate_audio(self, text: str, language: Optional[str] = None) -> Optional[Path]:
         """Generate audio file from text"""
         try:
             # Use default language if not specified
@@ -100,7 +100,7 @@ class GTTSProvider(BaseTTSProvider):
             self.logger.error(f"❌ Audio generation error: {e}")
             return None
     
-    async def _play_audio(self, audio_file: Path):
+    async def play_audio(self, audio_file: Path):
         """Play audio file using system player (pw-play, paplay, or aplay)"""
         try:
             self.is_speaking = True

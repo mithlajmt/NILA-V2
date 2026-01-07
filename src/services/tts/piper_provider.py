@@ -63,11 +63,11 @@ class PiperTTSProvider(BaseTTSProvider):
             await self._check_cache_size()
             
             # Generate audio
-            audio_file = await self._generate_audio(text)
+            audio_file = await self.generate_audio(text)
             
             if audio_file:
                 # Play audio with Lip Sync
-                await self._play_with_lipsync(audio_file)
+                await self.play_audio(audio_file)
                 return True
             else:
                 self.logger.error("❌ Failed to generate audio")
@@ -77,53 +77,7 @@ class PiperTTSProvider(BaseTTSProvider):
             self.logger.error(f"❌ Piper TTS error: {e}")
             return False
             
-    async def _generate_audio(self, text: str) -> Optional[Path]:
-        """Generate audio using Piper binary"""
-        try:
-            # Create cache filename
-            # Include model name in hash
-            cache_key = f"{text}_{self.model_path.name}"
-            text_hash = hashlib.md5(cache_key.encode()).hexdigest()
-            cache_file = self.cache_dir / f"piper_{text_hash}.wav"
-            
-            # Return cached file if exists
-            if cache_file.exists():
-                self.logger.debug(f"♻️ Using cached audio")
-                return cache_file
-            
-            # Generate new audio
-            self.logger.debug(f"🎵 Generating audio with Piper...")
-            
-            # Run Piper subprocess
-            # echo 'text' | piper --model model.onnx --output_file output.wav
-            
-            cmd = [
-                str(self.binary_path),
-                "--model", str(self.model_path),
-                "--output_file", str(cache_file)
-            ]
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            stdout, stderr = await process.communicate(input=text.encode())
-            
-            if process.returncode != 0:
-                self.logger.error(f"❌ Piper failed: {stderr.decode()}")
-                return None
-            
-            self.logger.debug(f"✅ Generated audio")
-            return cache_file
-            
-        except Exception as e:
-            self.logger.error(f"❌ Audio generation error: {e}")
-            return None
-
-    async def _generate_audio(self, text: str) -> Optional[Path]:
+    async def generate_audio(self, text: str, language: Optional[str] = None) -> Optional[Path]:
         """Generate audio using Piper binary"""
         try:
             # Create cache filename
@@ -176,7 +130,7 @@ class PiperTTSProvider(BaseTTSProvider):
             self.logger.error(f"❌ Audio generation error: {e}")
             return None
 
-    async def _play_with_lipsync(self, audio_file: Path):
+    async def play_audio(self, audio_file: Path):
         """Play audio using 'aplay' and drive jaw servo"""
         try:
             self.is_speaking = True
