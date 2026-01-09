@@ -91,6 +91,10 @@ class AudioCapture:
             calibration_chunks = 10 # 300ms calibration
             noise_energy_sum = 0
             
+            # Enable pre-speech buffering to prevent clipping
+            from collections import deque
+            pre_speech_buffer = deque(maxlen=10) # 300ms buffer (10 * 30ms)
+            
             with stream:
                 print("Adjusting to noise...", end="", flush=True)
                 
@@ -140,6 +144,11 @@ class AudioCapture:
                             from src.utils.latency import tracker
                             tracker.track("vad_speech_start", f"Energy: {rms}")
                             has_started_speaking = True
+                            
+                            # Yield pre-speech buffer first!
+                            for buffered_chunk in pre_speech_buffer:
+                                yield buffered_chunk
+                            pre_speech_buffer.clear()
                         
                         speech_frames += 1
                         silence_frames = 0
@@ -162,6 +171,9 @@ class AudioCapture:
                                 speech_frames = 0
                                 silence_frames = 0
                                 # print(".", end="", flush=True) # debug noise
+                    else:
+                        # Not speaking, not started -> Buffer this chunk
+                        pre_speech_buffer.append(chunk_bytes)
                     
                     # Yield 0 to allow event loop to breathe (crucial for async)
                     await asyncio.sleep(0)

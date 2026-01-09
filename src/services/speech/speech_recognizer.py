@@ -124,16 +124,37 @@ class SpeechRecognizer:
             self.logger.info("🎯 Ready to listen...")
             tracker.track("stt_listening_start")
             
-            # Capture audio (blocking call, run in executor)
-            loop = asyncio.get_event_loop()
-            audio_bytes = await loop.run_in_executor(
-                None,
-                lambda: self.audio_capture.record(
+            audio_bytes = None
+            
+            # 1. Try Memory/Stream capture first (SoundDevice) - FASTER
+            try:
+                # Collect all chunks from the async generator
+                chunks = []
+                async for chunk in self.audio_capture.stream_audio(
+                    chunk_duration_ms=30,
                     timeout=timeout,
-                    silence_duration=0.5, # Reduced from 1.5s for snappy response
+                    silence_duration=0.5, # Reduced for snappy response
                     min_speech_duration=0.5
+                ):
+                    chunks.append(chunk)
+                
+                if chunks:
+                    audio_bytes = b''.join(chunks)
+                    
+            except Exception as e:
+                self.logger.warning(f"⚠️ SoundDevice capture failed ({e}). Falling back to Parecord.")
+            
+            # 2. Fallback to parecord (subprocess) if stream failed or returned no data
+            if not audio_bytes:
+                loop = asyncio.get_event_loop()
+                audio_bytes = await loop.run_in_executor(
+                    None,
+                    lambda: self.audio_capture.record(
+                        timeout=timeout,
+                        silence_duration=0.5, 
+                        min_speech_duration=0.5
+                    )
                 )
-            )
             
             if not audio_bytes:
                 return None
