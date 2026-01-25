@@ -300,11 +300,13 @@ class RobotController:
     
     async def _speak_greeting(self):
         """Speak initial greeting"""
-        greeting = "Hey welcome, I'm Nila."
+        greeting = "ഹായ്, ഞാൻ നിലയാണ്. ഞാൻ നിങ്ങളോട് സംസാരിക്കാൻ തയ്യാറാണ്."
         
         self.logger.info(f"Speaking: {greeting}")
         await self.text_to_speech.speak(greeting)
-        await asyncio.sleep(0.5)
+        # Wait for greeting to finish playing before starting to listen
+        # This prevents self-listening (hearing own voice through mic)
+        await self.text_to_speech.wait_until_done()
     
     def stop(self):
         """Stop the robot"""
