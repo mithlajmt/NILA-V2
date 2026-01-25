@@ -18,6 +18,9 @@ numpy==1.26.4
 # Deepgram STT (High-quality cloud-based transcription)
 deepgram-sdk>=3.0.0
 
+# Soniox STT (Best Malayalam support - 10.7% WER)
+websockets>=12.0
+
 # Step 3 - LLM Integration (Conversation Intelligence)
 openai==2.7.1
 anthropic==0.8.0

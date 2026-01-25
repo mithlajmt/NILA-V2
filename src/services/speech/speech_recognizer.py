@@ -36,10 +36,10 @@ class SpeechRecognizer:
         self.audio_capture = AudioCapture(config=audio_config, device_name=device_name)
 
         # Provider selection
-        self.provider_name = settings.SPEECH_PROVIDER.lower()  # "google" | "whisper" | "deepgram"
+        self.provider_name = settings.SPEECH_PROVIDER.lower()  # "google" | "whisper" | "deepgram" | "soniox"
         self.provider: Optional[BaseSTTProvider] = None
         self.streaming_provider = None  # Separate streaming provider
-        self.use_streaming = getattr(settings, 'DEEPGRAM_USE_STREAMING', True)
+        self.use_streaming = getattr(settings, 'STT_USE_STREAMING', True)
         self.last_detected_language: Optional[str] = None
 
         # init provider
@@ -65,7 +65,7 @@ class SpeechRecognizer:
                 self.logger.warning(f"⚠️ Whisper init failed: {e}. Falling back to Google.")
                 self.provider_name = "google"
                 self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
-        elif self.provider_name == "deepgram":
+        elif self.provider_name in ("deepgram", "deepgram-streaming"):
             try:
                 from src.services.speech.providers.deepgram_stt_provider import DeepgramSTTProvider
                 
@@ -105,6 +105,50 @@ class SpeechRecognizer:
                 self.logger.warning(f"⚠️ Deepgram init failed: {e}. Falling back to Google.")
                 self.provider_name = "google"
                 self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
+        
+        elif self.provider_name in ("soniox", "soniox-streaming"):
+            try:
+                from src.services.speech.providers.soniox_stt_provider import SonioxSTTProvider
+                
+                # Initialize Soniox with API key and settings
+                api_key = getattr(self.settings, 'SONIOX_API_KEY', '')
+                if not api_key:
+                    raise ValueError("SONIOX_API_KEY not set in environment")
+                
+                # Parse language hints from comma-separated string
+                lang_hints_str = getattr(self.settings, 'SONIOX_LANGUAGE_HINTS', 'ml,en')
+                language_hints = [l.strip() for l in lang_hints_str.split(',')]
+                
+                # Batch provider (fallback)
+                self.provider = SonioxSTTProvider(
+                    api_key=api_key,
+                    model=getattr(self.settings, 'SONIOX_MODEL', 'stt-rt-preview'),
+                    language_hints=language_hints
+                )
+                
+                # Streaming provider (faster!)
+                if self.use_streaming:
+                    try:
+                        from src.services.speech.providers.soniox_streaming_provider import SonioxStreamingProvider
+                        
+                        self.streaming_provider = SonioxStreamingProvider(
+                            api_key=api_key,
+                            model=getattr(self.settings, 'SONIOX_MODEL', 'stt-rt-preview'),
+                            language_hints=language_hints,
+                            enable_speaker_diarization=getattr(self.settings, 'SONIOX_SPEAKER_DIARIZATION', False),
+                            enable_endpoint_detection=getattr(self.settings, 'SONIOX_ENDPOINT_DETECTION', True)
+                        )
+                        self.logger.info(f"🚀 Soniox STREAMING provider initialized")
+                    except Exception as stream_err:
+                        self.logger.warning(f"⚠️ Soniox streaming init failed: {stream_err}. Using batch mode.")
+                        self.use_streaming = False
+                
+                self.logger.info(f"🎙️ Soniox provider initialized (Malayalam + multilingual support)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Soniox init failed: {e}. Falling back to Google.")
+                self.provider_name = "google"
+                self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "ml-IN"))
+        
         else:
             self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
 
@@ -244,4 +288,6 @@ class SpeechRecognizer:
     def cleanup(self):
         """Cleanup resources"""
         self.logger.info("🧽 Cleaning up speech recognizer...")
+        if hasattr(self, 'audio_capture'):
+            self.audio_capture.request_stop()
         # AudioCapture and providers will be garbage collected

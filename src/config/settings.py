@@ -37,10 +37,20 @@ class Settings(BaseSettings):
     
     WHISPER_DEVICE: str = Field(default="cpu", env="WHISPER_DEVICE")  # "cpu" or "cuda" (for GPU)
     
-    # Deepgram STT Settings
+    # STT General Settings
+    STT_USE_STREAMING: bool = Field(default=True, env="STT_USE_STREAMING")  # Use streaming for lower latency
+    
+    # Deepgram STT Settings (English/Hindi only - NO Malayalam support)
     DEEPGRAM_MODEL: str = Field(default="nova-2", env="DEEPGRAM_MODEL")  # "nova-2", "enhanced", "base", "whisper"
     DEEPGRAM_LANGUAGE: str = Field(default="en-US", env="DEEPGRAM_LANGUAGE")  # Language code or "auto" for detection
     DEEPGRAM_SMART_FORMAT: bool = Field(default=True, env="DEEPGRAM_SMART_FORMAT")  # Enable smart formatting
+    
+    # Soniox STT Settings (BEST for Malayalam - 10.7% WER)
+    SONIOX_API_KEY: str = Field(default="", env="SONIOX_API_KEY")
+    SONIOX_MODEL: str = Field(default="stt-rt-preview", env="SONIOX_MODEL")  # Real-time streaming model
+    SONIOX_LANGUAGE_HINTS: str = Field(default="ml,en", env="SONIOX_LANGUAGE_HINTS")  # Comma-separated language codes
+    SONIOX_SPEAKER_DIARIZATION: bool = Field(default=False, env="SONIOX_SPEAKER_DIARIZATION")  # Speaker separation
+    SONIOX_ENDPOINT_DETECTION: bool = Field(default=True, env="SONIOX_ENDPOINT_DETECTION")  # Auto endpoint detection
     
     # LLM Settings
     LLM_MODEL: str = Field(default="gpt-3.5-turbo", env="LLM_MODEL")  # Model name for the provider

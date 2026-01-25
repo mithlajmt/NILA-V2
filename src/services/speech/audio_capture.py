@@ -42,7 +42,14 @@ class AudioCapture:
         # Use default PipeWire source
         self.device_id = "default (PipeWire)"
         
+        # Cancellation flag for immediate shutdown
+        self._stop_requested = False
+        
         self.logger.info(f"🎙️ AudioCapture initialized via PipeWire (rate={self.config.sample_rate}Hz, threshold={self.config.energy_threshold})")
+    
+    def request_stop(self):
+        """Request immediate stop of audio capture"""
+        self._stop_requested = True
 
     async def stream_audio(self, 
                           chunk_duration_ms: int = 30, # Match VAD frame size (30ms)
@@ -117,6 +124,10 @@ class AudioCapture:
                 
                 # Main streaming loop
                 while True:
+                    if self._stop_requested:
+                        print("\n🛑 Audio stream stopped by request")
+                        break
+                        
                     if time.time() - start_time > timeout:
                         print("⏱️ Timeout")
                         break
