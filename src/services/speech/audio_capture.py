@@ -126,6 +126,8 @@ class AudioCapture:
                 while True:
                     if self._stop_requested:
                         print("\n🛑 Audio stream stopped by request")
+                        # Reset so future listens still work
+                        self._stop_requested = False
                         break
                         
                     if time.time() - start_time > timeout:

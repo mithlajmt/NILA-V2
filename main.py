@@ -29,6 +29,7 @@ def main():
     except Exception as e:
         logger.error(f"Robot error: {e}")
     finally:
+        # Cleanup (Telegram bot will stop automatically with event loop)
         robot.cleanup()
 
 if __name__ == "__main__":

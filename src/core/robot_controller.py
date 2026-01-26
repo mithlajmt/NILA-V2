@@ -16,6 +16,9 @@ class RobotController:
         self.is_running = False
         self.conversation_active = False
         
+        # Input mode: "voice", "text", or "hybrid" (default: both, text priority)
+        self.input_mode = "hybrid"  # Can be changed via Telegram commands
+        
         # Statistics tracking
         self.stats = {
             'messages_received': 0,
@@ -45,11 +48,74 @@ class RobotController:
         from src.services.feedback.feedback_service import FeedbackService
         self.feedback = FeedbackService(settings)
         
+        # Initialize Operator Control (Text Input Handler)
+        from src.services.operator.text_input_handler import TextInputHandler
+        from src.services.operator.status_reporter import StatusReporter
+        self.text_handler = TextInputHandler()
+        self.status_reporter = StatusReporter(robot_controller=self)
+        self.telegram_bot = None
+        
+        # Initialize Telegram Bot (optional, isolated)
+        if getattr(settings, 'TELEGRAM_ENABLED', False) and getattr(settings, 'TELEGRAM_BOT_TOKEN', ''):
+            try:
+                from src.services.operator.telegram_bot import TelegramBot
+                self.telegram_bot = TelegramBot(
+                    token=settings.TELEGRAM_BOT_TOKEN,
+                    text_handler=self.text_handler,
+                    status_reporter=self.status_reporter,
+                    on_operator_text=self.interrupt_listening,
+                    mode_callback=self.set_input_mode  # Allow Telegram to change mode
+                )
+                self.logger.info("📱 Telegram bot initialized (will start when robot starts)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Telegram bot initialization failed: {e}")
+                self.logger.info("   Robot will continue without Telegram control")
+                self.telegram_bot = None
+        
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
         
         mode = "AI Conversations" if self.llm_enabled else "Echo Mode"
-        self.logger.info(f"🤖 Enhanced Robot Controller initialized - {mode}")
+        telegram_status = " + Telegram" if self.telegram_bot else ""
+        self.logger.info(f"🤖 Enhanced Robot Controller initialized - {mode}{telegram_status}")
+
+    def interrupt_listening(self):
+        """
+        Operator override: interrupt current mic listening ASAP.
+        Safe to call anytime (even if not currently listening).
+        """
+        try:
+            if hasattr(self, 'speech_recognizer') and hasattr(self.speech_recognizer, 'audio_capture'):
+                self.speech_recognizer.audio_capture.request_stop()
+                self.logger.info("🛑 Operator override: interrupted mic listening")
+        except Exception as e:
+            self.logger.debug(f"Operator interrupt failed: {e}")
+    
+    def set_input_mode(self, mode: str):
+        """
+        Set input mode: "voice", "text", or "hybrid"
+        
+        Args:
+            mode: "voice" = only mic, "text" = only Telegram/text, "hybrid" = both (text priority)
+        """
+        valid_modes = ["voice", "text", "hybrid"]
+        if mode.lower() not in valid_modes:
+            self.logger.warning(f"⚠️ Invalid mode: {mode}. Valid: {valid_modes}")
+            return False
+        
+        old_mode = self.input_mode
+        self.input_mode = mode.lower()
+        self.logger.info(f"🔄 Input mode changed: {old_mode} → {self.input_mode}")
+        
+        # If switching to text-only, stop any current mic listening
+        if self.input_mode == "text":
+            self.interrupt_listening()
+        
+        return True
+    
+    def get_input_mode(self) -> str:
+        """Get current input mode"""
+        return self.input_mode
     
     def _setup_signal_handlers(self):
         """Setup graceful shutdown on CTRL+C"""
@@ -71,6 +137,16 @@ class RobotController:
         # Start TTS Service (Background Worker)
         await self.text_to_speech.start()
         
+        # Start Telegram Bot (if enabled, isolated)
+        if self.telegram_bot:
+            try:
+                await self.telegram_bot.start()
+                self.logger.info("✅ Telegram bot started")
+            except Exception as e:
+                self.logger.error(f"❌ Telegram bot failed to start: {e}")
+                self.logger.info("   Robot will continue without Telegram")
+                self.telegram_bot = None
+        
         # Step 3: Speak greeting
         await self._speak_greeting()
         
@@ -82,21 +158,58 @@ class RobotController:
             try:
                 self._print_status_header()
                 
-                # Listen for voice input using STREAMING (faster!)
-                try:
-                    user_input = await self.speech_recognizer.listen_streaming(timeout=30)
-                except Exception as stream_err:
-                    # Fallback to batch mode if streaming fails
-                    self.logger.warning(f"⚠️ Streaming failed: {stream_err}, using batch mode")
-                    user_input = await self.speech_recognizer.listen(timeout=30)
+                # MODE-BASED INPUT HANDLING
+                user_input = None
+                
+                # TEXT MODE: Only check text queue (mic disabled)
+                if self.input_mode == "text":
+                    try:
+                        user_input = await self.text_handler.get_text(timeout=1.0)  # Wait a bit for text
+                        if user_input:
+                            self.logger.info(f"📝 Processing text input: {user_input[:50]}...")
+                            self.stats['messages_received'] += 1
+                            self._display_message_info(user_input, source="text")
+                    except Exception as text_err:
+                        self.logger.debug(f"Text queue check: {text_err}")
+                
+                # VOICE MODE: Only listen to mic (text disabled)
+                elif self.input_mode == "voice":
+                    try:
+                        user_input = await self.speech_recognizer.listen_streaming(timeout=30)
+                    except Exception as stream_err:
+                        self.logger.warning(f"⚠️ Streaming failed: {stream_err}, using batch mode")
+                        user_input = await self.speech_recognizer.listen(timeout=30)
+                    
+                    if user_input:
+                        self.stats['successful_transcriptions'] += 1
+                        self._display_message_info(user_input, source="voice")
+                
+                # HYBRID MODE: Text first, then voice (default)
+                else:  # hybrid
+                    # PRIORITY 1: Check text queue first (operator override - TEXT FIRST)
+                    try:
+                        user_input = await self.text_handler.get_text(timeout=0.1)  # Non-blocking check
+                        if user_input:
+                            self.logger.info(f"📝 Processing text input: {user_input[:50]}...")
+                            self.stats['messages_received'] += 1
+                            self._display_message_info(user_input, source="text")
+                    except Exception as text_err:
+                        self.logger.debug(f"Text queue check: {text_err}")
+                    
+                    # PRIORITY 2: Voice input (if no text available)
+                    if not user_input:
+                        try:
+                            user_input = await self.speech_recognizer.listen_streaming(timeout=30)
+                        except Exception as stream_err:
+                            self.logger.warning(f"⚠️ Streaming failed: {stream_err}, using batch mode")
+                            user_input = await self.speech_recognizer.listen(timeout=30)
+                        
+                        if user_input:
+                            self.stats['successful_transcriptions'] += 1
+                            self._display_message_info(user_input, source="voice")
                 
                 if user_input:
                     consecutive_failures = 0  # Reset failure counter
-                    self.stats['messages_received'] += 1
-                    self.stats['successful_transcriptions'] += 1
-                    
-                    # Display recorded message with analysis
-                    self._display_message_info(user_input)
                     
                     # Check for exit commands
                     if self._is_exit_command(user_input):
@@ -185,8 +298,14 @@ class RobotController:
         from src.utils.latency import tracker
         print(tracker.get_report())
         
+        mode_icon = {
+            "voice": "🎤",
+            "text": "📝",
+            "hybrid": "🎤📝"
+        }.get(self.input_mode, "🎤📝")
+        
         print("\n" + "="*60)
-        print("🎯 ROBOT LISTENING MODE" + (" - AI ACTIVE 🧠" if self.llm_enabled else " - ECHO MODE"))
+        print(f"🎯 ROBOT LISTENING MODE [{mode_icon} {self.input_mode.upper()}]" + (" - AI ACTIVE 🧠" if self.llm_enabled else " - ECHO MODE"))
         print("="*60)
         print(f"💬 Messages received: {self.stats['messages_received']}")
         print(f"✅ Successful: {self.stats['successful_transcriptions']} | ❌ Failed: {self.stats['failed_transcriptions']}")
@@ -197,9 +316,11 @@ class RobotController:
             print(f"⏱️  Uptime: {int(uptime)}s")
         print("-" * 60)
     
-    def _display_message_info(self, text: str):
+    def _display_message_info(self, text: str, source: str = "voice"):
         """Display detailed information about the received message"""
-        print(f"\n🎤 RECEIVED MESSAGE:")
+        icon = "📝" if source == "text" else "🎤"
+        source_label = "TEXT INPUT" if source == "text" else "VOICE INPUT"
+        print(f"\n{icon} RECEIVED MESSAGE ({source_label}):")
         print(f"  📝 Text: '{text}'")
         print(f"  ⏱️  Time: {time.strftime('%H:%M:%S')}")
         print(f"  📏 Length: {len(text)} characters")
@@ -276,8 +397,35 @@ class RobotController:
         if hasattr(self, 'speech_recognizer') and hasattr(self.speech_recognizer, 'audio_capture'):
             self.speech_recognizer.audio_capture.request_stop()
     
+    async def cleanup_async(self):
+        """Async cleanup resources (for Telegram bot)"""
+        self.logger.info("🧹 Cleaning up robot resources (async)...")
+        
+        # Stop Telegram bot
+        if self.telegram_bot:
+            try:
+                await self.telegram_bot.stop()
+            except Exception as e:
+                self.logger.error(f"❌ Error stopping Telegram bot: {e}")
+        
+        if hasattr(self, 'text_to_speech'):
+            self.text_to_speech.cleanup()
+        
+        if hasattr(self, 'speech_recognizer'):
+            self.speech_recognizer.cleanup()
+        
+        if hasattr(self, 'llm_service') and self.llm_service:
+            self.llm_service.cleanup()
+            
+        if hasattr(self, 'feedback'):
+            self.feedback.cleanup()
+        
+        self.logger.info("✅ Cleanup complete")
+    
     def cleanup(self):
-        """Cleanup resources"""
+        """Cleanup resources (sync wrapper)"""
+        # For sync cleanup, Telegram bot will stop when event loop closes
+        # This is safe because Telegram bot runs in its own task
         self.logger.info("🧹 Cleaning up robot resources...")
         
         if hasattr(self, 'text_to_speech'):
@@ -291,5 +439,10 @@ class RobotController:
             
         if hasattr(self, 'feedback'):
             self.feedback.cleanup()
+        
+        # Note: Telegram bot cleanup happens in async context
+        # It will stop automatically when event loop closes
+        if self.telegram_bot:
+            self.logger.info("📱 Telegram bot will stop with event loop")
         
         self.logger.info("✅ Cleanup complete")

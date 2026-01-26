@@ -120,6 +120,10 @@ Language handling:
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     LOG_FILE: str = Field(default="data/logs/robot.log", env="LOG_FILE")
     
+    # Operator Control (Telegram Bot)
+    TELEGRAM_BOT_TOKEN: str = Field(default="", env="TELEGRAM_BOT_TOKEN")
+    TELEGRAM_ENABLED: bool = Field(default=False, env="TELEGRAM_ENABLED")
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
