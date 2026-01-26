@@ -64,6 +64,14 @@ class AudioCapture:
             import sounddevice as sd
             import numpy as np
             
+            # Check if audio device is available
+            try:
+                devices = sd.query_devices()
+                default_input = sd.query_devices(kind='input')
+                self.logger.debug(f"Audio devices available: {len(devices)}")
+            except Exception as dev_err:
+                self.logger.warning(f"⚠️ Could not query audio devices: {dev_err}")
+            
             self.logger.info("🎯 Starting async audio stream (Low Latency Mode)...")
             print(f"🎯 Listening... (Silence cutoff: {silence_duration}s)")
             
@@ -115,12 +123,27 @@ class AudioCapture:
                     noise_energy_sum += rms
                 
                 avg_noise = noise_energy_sum / calibration_chunks
+                
+                # Check for suspiciously low noise (mic might not be working)
+                if avg_noise < 50:
+                    self.logger.warning(f"⚠️ Very low noise level detected ({int(avg_noise)}) - mic may not be working!")
+                    self.logger.warning("   Check: Is mic connected? Is it muted? Is audio device correct?")
+                    # Use minimum threshold to still allow detection
+                    avg_noise = max(avg_noise, 200)  # Minimum baseline
+                
                 # Adaptive threshold: slightly lower margin for sensitivity
                 dynamic_threshold = int(avg_noise * 1.3) + 100
+                
+                # Ensure minimum threshold for very quiet environments
+                if dynamic_threshold < 300:
+                    dynamic_threshold = 300
                 
                 if dynamic_threshold > 20000: dynamic_threshold = 20000 # Safety cap
                 
                 print(f" Done. (Noise: {int(avg_noise)} → Threshold: {dynamic_threshold})")
+                
+                if avg_noise < 100:
+                    print("⚠️ WARNING: Low noise detected - mic may not be working properly!")
                 
                 # Main streaming loop
                 while True:

@@ -10,6 +10,7 @@ from datetime import datetime
 try:
     from telegram import Update
     from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+    from telegram.error import Conflict, NetworkError, TimedOut
     TELEGRAM_AVAILABLE = True
 except ImportError:
     TELEGRAM_AVAILABLE = False
@@ -63,6 +64,7 @@ class TelegramBot:
             
             # Add handlers
             self.application.add_handler(CommandHandler("start", self._handle_start))
+            self.application.add_handler(CommandHandler("help", self._handle_help))
             self.application.add_handler(CommandHandler("status", self._handle_status))
             self.application.add_handler(CommandHandler("mic", self._handle_mic_command))
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
@@ -70,12 +72,36 @@ class TelegramBot:
             # Start bot
             await self.application.initialize()
             await self.application.start()
-            await self.application.updater.start_polling()
+            
+            # Configure updater to handle conflicts gracefully
+            # Use drop_pending_updates to avoid conflicts with other instances
+            # Set error handlers to catch polling errors
+            try:
+                await self.application.updater.start_polling(
+                    drop_pending_updates=True,
+                    allowed_updates=["message", "callback_query"],
+                    poll_interval=1.0,
+                    timeout=10
+                )
+            except Conflict:
+                # Conflict during polling - another instance exists
+                self.logger.warning("⚠️ Telegram polling conflict - another bot instance detected")
+                self.logger.info("   Robot will continue, but Telegram may not work")
+                self.logger.info("   Solution: Stop other bot instances")
+                raise  # Re-raise to be caught by outer handler
             
             self.running = True
             self.stats['start_time'] = datetime.now()
             self.logger.info("✅ Telegram bot started successfully")
             
+        except Conflict as e:
+            # Another bot instance is running - this is recoverable
+            self.logger.warning(f"⚠️ Telegram bot conflict: Another instance may be running")
+            self.logger.info("   Robot will continue without Telegram control")
+            self.logger.info("   Solution: Stop other bot instances or wait a few seconds")
+            self.stats['errors'] += 1
+            self.running = False
+            # Don't raise - robot should continue!
         except Exception as e:
             self.logger.error(f"❌ Failed to start Telegram bot: {e}")
             self.logger.info("   Robot will continue without Telegram control")
@@ -103,24 +129,65 @@ class TelegramBot:
         try:
             welcome = (
                 "🤖 **NILA Robot Control**\n\n"
-                "**Commands:**\n"
+                "Welcome! I'm your robot operator interface.\n\n"
+                "**Quick Commands:**\n"
+                "`/help` - Show all commands\n"
                 "`/status` - Check robot status\n"
-                "`/mic off` - Disable mic (text only)\n"
-                "`/mic on` - Enable mic (voice only)\n"
-                "`/mic hybrid` - Both (text priority)\n\n"
+                "`/mic` - Control input mode\n\n"
                 "Send any message to forward to robot.\n\n"
                 "✅ Bot is active!"
             )
-            await update.message.reply_text(welcome)
+            await update.message.reply_text(welcome, parse_mode='Markdown')
         except Exception as e:
             self.logger.error(f"❌ Error handling /start: {e}")
+    
+    async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help command"""
+        try:
+            # Get current mode if available
+            current_mode = "unknown"
+            mode_icon = "🎤📝"
+            if hasattr(self.status_reporter, 'robot_controller') and self.status_reporter.robot_controller:
+                current_mode = self.status_reporter.robot_controller.get_input_mode()
+                mode_icons = {"voice": "🎤", "text": "📝", "hybrid": "🎤📝"}
+                mode_icon = mode_icons.get(current_mode, "🎤📝")
+            
+            help_text = (
+                "📖 **NILA Robot Control - Help**\n\n"
+                "**Available Commands:**\n\n"
+                "`/start` - Welcome message\n"
+                "`/help` - Show this help\n"
+                "`/status` - Detailed robot status\n\n"
+                "**Mode Control:**\n"
+                "`/mic off` - 📝 TEXT ONLY (disable mic)\n"
+                "`/mic on` - 🎤 VOICE ONLY (enable mic)\n"
+                "`/mic hybrid` - 🎤📝 BOTH (text priority)\n\n"
+                f"**Current Mode:** {mode_icon} {current_mode.upper()}\n\n"
+                "**Usage:**\n"
+                "• Send any text message → Robot processes it\n"
+                "• Use `/mic off` if mic breaks → Text only mode\n"
+                "• Use `/status` to monitor robot health\n\n"
+                "💡 **Tip:** In text mode, robot responds instantly with no mic lag!"
+            )
+            await update.message.reply_text(help_text, parse_mode='Markdown')
+        except Exception as e:
+            self.logger.error(f"❌ Error handling /help: {e}")
+            await update.message.reply_text("⚠️ Error showing help")
     
     async def _handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command"""
         try:
             self.stats['status_requests'] += 1
             status = self.status_reporter.get_status()
-            await update.message.reply_text(status)
+            
+            # Add current mode to status if available
+            if hasattr(self.status_reporter, 'robot_controller') and self.status_reporter.robot_controller:
+                current_mode = self.status_reporter.robot_controller.get_input_mode()
+                mode_icons = {"voice": "🎤", "text": "📝", "hybrid": "🎤📝"}
+                mode_icon = mode_icons.get(current_mode, "🎤📝")
+                status = f"{status}\n\n**Input Mode:** {mode_icon} {current_mode.upper()}"
+            
+            await update.message.reply_text(status, parse_mode='Markdown')
         except Exception as e:
             self.logger.error(f"❌ Error handling /status: {e}")
             await update.message.reply_text(f"⚠️ Error getting status: {str(e)}")
@@ -130,12 +197,20 @@ class TelegramBot:
         try:
             if not context.args or len(context.args) == 0:
                 # Show current mode and help
+                current_mode = "unknown"
+                if hasattr(self.status_reporter, 'robot_controller') and self.status_reporter.robot_controller:
+                    current_mode = self.status_reporter.robot_controller.get_input_mode()
+                
+                mode_icons = {"voice": "🎤", "text": "📝", "hybrid": "🎤📝"}
+                mode_icon = mode_icons.get(current_mode, "🎤📝")
+                
                 help_text = (
                     "🎤 **Mic Control Commands:**\n\n"
                     "`/mic off` - Disable mic, TEXT ONLY mode\n"
                     "`/mic on` - Enable mic, VOICE ONLY mode\n"
                     "`/mic hybrid` - Both mic + text (text priority)\n\n"
-                    "**Current mode:** Check /status"
+                    f"**Current Mode:** {mode_icon} {current_mode.upper()}\n\n"
+                    "💡 Use `/status` for full robot status"
                 )
                 await update.message.reply_text(help_text, parse_mode='Markdown')
                 return

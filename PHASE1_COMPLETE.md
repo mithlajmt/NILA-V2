@@ -17,14 +17,16 @@
 - ✅ Isolated async bot (robot continues if it fails)
 - ✅ Receives messages → adds to text queue
 - ✅ Sends status on request
-- ✅ Commands: `/start`, `/status`
+- ✅ Commands: `/start`, `/status`, `/mic` (mode switching)
+- ✅ Mode switching: `/mic off`, `/mic on`, `/mic hybrid`
 - ✅ Error handling (wrapped in try-except)
 
 ### 4. **Integration** (`src/core/robot_controller.py`)
 - ✅ Text input handler initialized
 - ✅ Status reporter initialized
 - ✅ Telegram bot optional (if enabled)
-- ✅ **TEXT FIRST** priority in main loop
+- ✅ **Mode switching system** (voice/text/hybrid)
+- ✅ **TEXT FIRST** priority in hybrid mode
 - ✅ Uses existing `_handle_conversation()` (no duplicate code)
 
 ## Architecture
@@ -122,6 +124,9 @@ Expected: All tests pass
 4. Send `/start` → should get welcome
 5. Send any message → robot processes it
 6. Send `/status` → should get status
+7. Send `/mic off` → switch to text-only mode (no mic lag!)
+8. Send `/mic on` → switch back to voice mode
+9. Send `/mic hybrid` → both modes active
 
 ### Step 5: Test Failure Scenarios
 1. **Invalid token**: Set wrong token → robot should continue
@@ -160,10 +165,12 @@ TELEGRAM_ENABLED=true  # Set to false to disable
 
 ✅ **Text input via Telegram** - Send messages to robot
 ✅ **Status on demand** - Get robot status via Telegram
-✅ **Text priority** - Text processed before voice
+✅ **Mode switching** - `/mic off` (text only), `/mic on` (voice only), `/mic hybrid` (both)
+✅ **Text priority** - Text processed before voice (in hybrid mode)
 ✅ **Safe failure** - Robot continues if Telegram fails
 ✅ **Manual text input** - Can add text programmatically
 ✅ **Statistics** - Track text input usage
+✅ **Zero lag in text mode** - Mic completely disabled when `/mic off`
 
 ## What's Next (Phase 2+)
 

@@ -105,11 +105,29 @@ class RobotController:
         
         old_mode = self.input_mode
         self.input_mode = mode.lower()
-        self.logger.info(f"🔄 Input mode changed: {old_mode} → {self.input_mode}")
+        
+        # Log mode change with clear indication
+        mode_descriptions = {
+            "voice": "🎤 VOICE ONLY (mic active, text disabled)",
+            "text": "📝 TEXT ONLY (mic disabled, Telegram/text only)",
+            "hybrid": "🎤📝 HYBRID (both active, text priority)"
+        }
+        desc = mode_descriptions.get(self.input_mode, self.input_mode)
+        self.logger.info(f"🔄 Input mode changed: {old_mode.upper()} → {self.input_mode.upper()}")
+        self.logger.info(f"   {desc}")
+        print(f"\n{'='*60}")
+        print(f"🔄 MODE CHANGE: {old_mode.upper()} → {self.input_mode.upper()}")
+        print(f"   {desc}")
+        print(f"{'='*60}\n")
         
         # If switching to text-only, stop any current mic listening
         if self.input_mode == "text":
             self.interrupt_listening()
+            print("📝 Mic disabled - Robot will only process text input")
+        elif self.input_mode == "voice":
+            print("🎤 Mic enabled - Robot will only listen to voice")
+        else:
+            print("🎤📝 Hybrid mode - Text has priority, mic also active")
         
         return True
     

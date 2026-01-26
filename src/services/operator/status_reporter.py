@@ -60,6 +60,13 @@ class StatusReporter:
                     lines.append(f"📝 Text Input: {text_stats.get('total_received', 0)} received")
                     if text_stats.get('queue_size', 0) > 0:
                         lines.append(f"⏳ Pending: {text_stats.get('queue_size', 0)}")
+                
+                # Input mode
+                if hasattr(self.robot_controller, 'get_input_mode'):
+                    current_mode = self.robot_controller.get_input_mode()
+                    mode_icons = {"voice": "🎤", "text": "📝", "hybrid": "🎤📝"}
+                    mode_icon = mode_icons.get(current_mode, "🎤📝")
+                    lines.append(f"{mode_icon} Mode: {current_mode.upper()}")
             else:
                 lines.append("⚠️ Controller not available")
             
