@@ -28,7 +28,15 @@ class TelegramBot:
     - Runs in separate async task
     """
     
-    def __init__(self, token: str, text_handler, status_reporter, on_operator_text: Optional[callable] = None, mode_callback: Optional[callable] = None):
+    def __init__(
+        self,
+        token: str,
+        text_handler,
+        status_reporter,
+        on_operator_text: Optional[callable] = None,
+        mode_callback: Optional[callable] = None,
+        conversation_mode_callback: Optional[callable] = None,
+    ):
         if not TELEGRAM_AVAILABLE:
             raise ImportError("python-telegram-bot not installed. Install with: pip install python-telegram-bot")
         
@@ -40,6 +48,8 @@ class TelegramBot:
         self.on_operator_text = on_operator_text
         # Optional callback to change input mode (voice/text/hybrid)
         self.mode_callback = mode_callback
+        # Optional callback to change conversation mode (chat/speak)
+        self.conversation_mode_callback = conversation_mode_callback
         self.logger = logging.getLogger(__name__)
         self.application = None
         self.running = False
@@ -67,6 +77,7 @@ class TelegramBot:
             self.application.add_handler(CommandHandler("help", self._handle_help))
             self.application.add_handler(CommandHandler("status", self._handle_status))
             self.application.add_handler(CommandHandler("mic", self._handle_mic_command))
+            self.application.add_handler(CommandHandler("mode", self._handle_mode_command))
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
             
             # Start bot
@@ -147,10 +158,17 @@ class TelegramBot:
             # Get current mode if available
             current_mode = "unknown"
             mode_icon = "🎤📝"
+            conv_mode = "chat"
+            conv_icon = "🤖"
             if hasattr(self.status_reporter, 'robot_controller') and self.status_reporter.robot_controller:
-                current_mode = self.status_reporter.robot_controller.get_input_mode()
+                rc = self.status_reporter.robot_controller
+                current_mode = rc.get_input_mode()
                 mode_icons = {"voice": "🎤", "text": "📝", "hybrid": "🎤📝"}
                 mode_icon = mode_icons.get(current_mode, "🎤📝")
+                if hasattr(rc, "get_conversation_mode"):
+                    conv_mode = rc.get_conversation_mode()
+                conv_icons = {"chat": "🤖", "speak": "🗣️"}
+                conv_icon = conv_icons.get(conv_mode, "🤖")
             
             help_text = (
                 "📖 **NILA Robot Control - Help**\n\n"
@@ -162,7 +180,11 @@ class TelegramBot:
                 "`/mic off` - 📝 TEXT ONLY (disable mic)\n"
                 "`/mic on` - 🎤 VOICE ONLY (enable mic)\n"
                 "`/mic hybrid` - 🎤📝 BOTH (text priority)\n\n"
-                f"**Current Mode:** {mode_icon} {current_mode.upper()}\n\n"
+                "**Conversation Mode:**\n"
+                "`/mode chat` - 🤖 Chat with AI (default)\n"
+                "`/mode speak` - 🗣️ Direct speak (no AI, speak text)\n\n"
+                f"**Current Input Mode:** {mode_icon} {current_mode.upper()}\n"
+                f"**Current Conversation Mode:** {conv_icon} {conv_mode.upper()}\n\n"
                 "**Usage:**\n"
                 "• Send any text message → Robot processes it\n"
                 "• Use `/mic off` if mic breaks → Text only mode\n"
@@ -180,12 +202,22 @@ class TelegramBot:
             self.stats['status_requests'] += 1
             status = self.status_reporter.get_status()
             
-            # Add current mode to status if available
+            # Add current modes to status if available
             if hasattr(self.status_reporter, 'robot_controller') and self.status_reporter.robot_controller:
-                current_mode = self.status_reporter.robot_controller.get_input_mode()
+                rc = self.status_reporter.robot_controller
+                current_mode = rc.get_input_mode()
                 mode_icons = {"voice": "🎤", "text": "📝", "hybrid": "🎤📝"}
                 mode_icon = mode_icons.get(current_mode, "🎤📝")
-                status = f"{status}\n\n**Input Mode:** {mode_icon} {current_mode.upper()}"
+                
+                conv_mode = getattr(rc, "get_conversation_mode", lambda: "chat")()
+                conv_icons = {"chat": "🤖", "speak": "🗣️"}
+                conv_icon = conv_icons.get(conv_mode, "🤖")
+                
+                status = (
+                    f"{status}\n\n"
+                    f"**Input Mode:** {mode_icon} {current_mode.upper()}\n"
+                    f"**Conversation Mode:** {conv_icon} {conv_mode.upper()}"
+                )
             
             await update.message.reply_text(status, parse_mode='Markdown')
         except Exception as e:
@@ -248,6 +280,66 @@ class TelegramBot:
                 
         except Exception as e:
             self.logger.error(f"❌ Error handling /mic command: {e}")
+            await update.message.reply_text(f"⚠️ Error: {str(e)}")
+
+    async def _handle_mode_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /mode command - Conversation mode switching (chat/speak)"""
+        try:
+            if not context.args or len(context.args) == 0:
+                # Show current conversation mode and help
+                conv_mode = "chat"
+                if hasattr(self.status_reporter, 'robot_controller') and self.status_reporter.robot_controller:
+                    conv_mode = self.status_reporter.robot_controller.get_conversation_mode()
+                conv_icons = {"chat": "🤖", "speak": "🗣️"}
+                conv_icon = conv_icons.get(conv_mode, "🤖")
+                
+                help_text = (
+                    "🧠 **Conversation Mode Commands:**\n\n"
+                    "`/mode chat`  - 🤖 Use AI (normal conversation)\n"
+                    "`/mode speak` - 🗣️ Direct speak (no AI, speak text)\n\n"
+                    f"**Current Conversation Mode:** {conv_icon} {conv_mode.upper()}\n\n"
+                    "💡 Use `speak` mode for exhibition scripts: robot will speak exactly what you type."
+                )
+                await update.message.reply_text(help_text, parse_mode='Markdown')
+                return
+            
+            if not self.conversation_mode_callback:
+                await update.message.reply_text("⚠️ Conversation mode switching not available")
+                return
+            
+            command = context.args[0].lower()
+            mode_map = {
+                "chat": "chat",
+                "speak": "speak",
+                "direct": "speak",
+            }
+            
+            if command not in mode_map:
+                await update.message.reply_text(
+                    "⚠️ Invalid command. Use: `/mode chat` or `/mode speak`",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            new_mode = mode_map[command]
+            success = self.conversation_mode_callback(new_mode)
+            
+            if success:
+                conv_icons = {"chat": "🤖", "speak": "🗣️"}
+                conv_icon = conv_icons.get(new_mode, "🤖")
+                if new_mode == "chat":
+                    detail = "Robot will answer using AI (LLM)."
+                else:
+                    detail = "Robot will speak your text directly (no AI)."
+                await update.message.reply_text(
+                    f"{conv_icon} **Conversation mode changed to: {new_mode.upper()}**\n\n{detail}",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text("⚠️ Failed to change conversation mode")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error handling /mode command: {e}")
             await update.message.reply_text(f"⚠️ Error: {str(e)}")
     
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

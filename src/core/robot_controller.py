@@ -19,6 +19,11 @@ class RobotController:
         # Input mode: "voice", "text", or "hybrid" (default: both, text priority)
         self.input_mode = "hybrid"  # Can be changed via Telegram commands
         
+        # Conversation mode: "chat" (LLM) or "speak" (direct TTS of input text)
+        # "chat" = normal AI conversation
+        # "speak" = bypass LLM, speak exactly what operator sends
+        self.conversation_mode = "chat"
+        
         # Statistics tracking
         self.stats = {
             'messages_received': 0,
@@ -64,7 +69,8 @@ class RobotController:
                     text_handler=self.text_handler,
                     status_reporter=self.status_reporter,
                     on_operator_text=self.interrupt_listening,
-                    mode_callback=self.set_input_mode  # Allow Telegram to change mode
+                    mode_callback=self.set_input_mode,              # Input mode (mic/text/hybrid)
+                    conversation_mode_callback=self.set_conversation_mode  # Conversation mode (chat/speak)
                 )
                 self.logger.info("📱 Telegram bot initialized (will start when robot starts)")
             except Exception as e:
@@ -134,6 +140,37 @@ class RobotController:
     def get_input_mode(self) -> str:
         """Get current input mode"""
         return self.input_mode
+    
+    def set_conversation_mode(self, mode: str) -> bool:
+        """
+        Set conversation mode:
+        - "chat"  = normal LLM conversation
+        - "speak" = direct TTS (speak the exact text, no LLM)
+        """
+        valid_modes = ["chat", "speak"]
+        if mode.lower() not in valid_modes:
+            self.logger.warning(f"⚠️ Invalid conversation mode: {mode}. Valid: {valid_modes}")
+            return False
+        
+        old_mode = self.conversation_mode
+        self.conversation_mode = mode.lower()
+        
+        desc = {
+            "chat": "🤖 CHAT MODE (LLM responses)",
+            "speak": "🗣️ DIRECT SPEAK MODE (no LLM, speak operator text)"
+        }.get(self.conversation_mode, self.conversation_mode)
+        
+        self.logger.info(f"🔄 Conversation mode changed: {old_mode.upper()} → {self.conversation_mode.upper()}")
+        self.logger.info(f"   {desc}")
+        print(f"\n{'='*60}")
+        print(f"🔄 CONVERSATION MODE: {old_mode.upper()} → {self.conversation_mode.upper()}")
+        print(f"   {desc}")
+        print(f"{'='*60}\n")
+        return True
+    
+    def get_conversation_mode(self) -> str:
+        """Get current conversation mode"""
+        return self.conversation_mode
     
     def _setup_signal_handlers(self):
         """Setup graceful shutdown on CTRL+C"""
@@ -266,6 +303,31 @@ class RobotController:
         Handle conversation - SIMPLE MODE
         Get full AI response, then speak it all at once
         """
+        # DIRECT SPEAK MODE: Bypass LLM and speak operator text directly
+        if getattr(self, "conversation_mode", "chat") == "speak":
+            try:
+                print("\n" + "="*60)
+                print("🗣️ DIRECT SPEAK MODE (No LLM):")
+                print("="*60)
+                print(user_input)
+                print("="*60)
+                
+                # Direct TTS of operator text
+                await self.text_to_speech.speak(user_input)
+                print("⏳ Waiting for speech to finish...")
+                await self.text_to_speech.wait_until_done()
+            except Exception as e:
+                self.logger.error(f"❌ Direct speak error: {e}")
+                print(f"\n❌ Direct speak error: {e}")
+            finally:
+                # Ensure thinking feedback is stopped if it was started elsewhere
+                try:
+                    self.feedback.stop_thinking()
+                except Exception:
+                    pass
+            return
+        
+        # CHAT MODE (LLM conversation)
         if not self.llm_enabled or self.llm_service is None:
             # Echo mode fallback
             print(f"\n🤖 ROBOT (Echo Mode): You said '{user_input}'")
