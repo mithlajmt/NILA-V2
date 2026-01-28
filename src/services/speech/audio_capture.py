@@ -132,14 +132,26 @@ class AudioCapture:
                     # Use minimum threshold to still allow detection
                     avg_noise = max(avg_noise, 100)  # Minimum baseline (lowered for distance)
                 
-                # Adaptive threshold: optimized for distance detection
-                dynamic_threshold = int(avg_noise * 1.15) + 150
+                # Adaptive threshold with special handling for high-noise environments (Raspberry Pi)
+                # Problem: On Pi, ambient noise can be 5000-6000 due to hardware/USB noise
+                # Solution: Use a capped formula that doesn't scale linearly with very high noise
+                
+                if avg_noise > 3000:
+                    # High noise environment (Raspberry Pi USB mic noise)
+                    # Use a fixed threshold that's above noise but not too high
+                    dynamic_threshold = 3500  # Fixed threshold for high-noise environments
+                    self.logger.info(f"⚠️ High ambient noise detected ({int(avg_noise)}) - using fixed threshold")
+                else:
+                    # Normal environment - use adaptive threshold
+                    dynamic_threshold = int(avg_noise * 1.15) + 150
                 
                 # Ensure minimum threshold for very quiet environments
                 if dynamic_threshold < 200:
                     dynamic_threshold = 200
                 
-                if dynamic_threshold > 20000: dynamic_threshold = 20000 # Safety cap
+                # Safety cap (but lower than before since we handle high noise above)
+                if dynamic_threshold > 4000: 
+                    dynamic_threshold = 4000
                 
                 print(f" Done. (Noise: {int(avg_noise)} → Threshold: {dynamic_threshold})")
                 
@@ -293,17 +305,19 @@ class AudioCapture:
                 
             avg_noise = noise_energy_sum / calibration_chunks
             
-            # Set threshold significantly above noise floor
-            # If noise is 23000, we need threshold around 25000?
-            # Or is 23000 DC offset?
-            # Safe margin: Noise * 1.2 + constant
-            dynamic_threshold = int(avg_noise * 1.2) + 300
+            # Set threshold with special handling for high-noise environments (same as stream_audio)
+            if avg_noise > 3000:
+                # High noise environment (Raspberry Pi USB mic noise)
+                dynamic_threshold = 3500  # Fixed threshold for high-noise environments
+                print(f"\n⚠️ High ambient noise detected ({int(avg_noise)}) - using fixed threshold")
+            else:
+                # Normal environment - use adaptive threshold
+                dynamic_threshold = int(avg_noise * 1.15) + 150
             
             # Cap the threshold to avoid blocking everything if noise is insane
-            # Max possible RMS for 16-bit is ~32767. 
-            if dynamic_threshold > 30000:
+            if dynamic_threshold > 4000:
                 print(f"\n⚠️ High Noise detected ({int(avg_noise)}). Clamping threshold.")
-                dynamic_threshold = 30000
+                dynamic_threshold = 4000
                 
             print(f" Done. (Noise: {int(avg_noise)} -> Threshold: {dynamic_threshold})")
             
