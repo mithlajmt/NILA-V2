@@ -139,7 +139,7 @@ class TelegramBot:
         """Handle /start command"""
         try:
             welcome = (
-                "🤖 **NILA Robot Control**\n\n"
+                "🤖 **Torres Robot Control**\n\n"
                 "Welcome! I'm your robot operator interface.\n\n"
                 "**Quick Commands:**\n"
                 "`/help` - Show all commands\n"
@@ -171,7 +171,7 @@ class TelegramBot:
                 conv_icon = conv_icons.get(conv_mode, "🤖")
             
             help_text = (
-                "📖 **NILA Robot Control - Help**\n\n"
+                "📖 **Torres Robot Control - Help**\n\n"
                 "**Available Commands:**\n\n"
                 "`/start` - Welcome message\n"
                 "`/help` - Show this help\n"

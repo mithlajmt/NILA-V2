@@ -55,7 +55,7 @@ class OpenRouterProvider(BaseLLMProvider):
                 temperature=self.temperature,
                 extra_headers={
                     "HTTP-Referer": "https://github.com/mithlajmt/NILA-V2", 
-                    "X-Title": "NILA-V2",
+                    "X-Title": "Torres",
                 },
             )
             
@@ -98,7 +98,7 @@ class OpenRouterProvider(BaseLLMProvider):
                 stream=True, # Enable streaming!
                 extra_headers={
                     "HTTP-Referer": "https://github.com/mithlajmt/NILA-V2",
-                    "X-Title": "NILA-V2",
+                    "X-Title": "Torres",
                 },
             )
             

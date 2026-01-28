@@ -30,8 +30,8 @@ class BasicResponseHandler:
             
             # Name
             (r'\b(endha\s*per|entha\s*peru|peru\s*entha)\b', [
-                "എൻ്റെ പേര് നില.",  # My name is Nila.
-                "ഞാൻ നില. നിങ്ങളുടെ AI സുഹൃത്ത്.", # I am Nila. Your AI friend.
+                "എൻ്റെ പേര് ടോറസ്.",  # My name is Torres.
+                "ഞാൻ ടോറസ്. നിങ്ങളുടെ AI സുഹൃത്ത്.", # I am Torres. Your AI friend.
             ]),
             
             # Food
@@ -49,8 +49,8 @@ class BasicResponseHandler:
             
             # Specific "Hello Torres" greeting (requested by user)
             (r'\bhello\s+torres\b', [
-                "Hello! I am Nila, your AI friend.",
-                "Hi there! I'm Nila.",
+                "Hello! I am Torres, your AI friend.",
+                "Hi there! I'm Torres.",
             ]),
             
             # General Greetings
@@ -60,15 +60,15 @@ class BasicResponseHandler:
                 "Hey! What's up?",
             ]),
             
-             (r'^\s*(hello|hi|hey)\s+nila\s*$', [
+             (r'^\s*(hello|hi|hey)\s+torres\s*$', [
                 "Hello! I am here.",
                 "Hi! How can I help you?",
             ]),
             
             # Identity
             (r'\b(what\s*is\s*your\s*name|who\s*are\s*you)\b', [
-                "My name is Nila.",
-                "I am Nila, your AI robot assistant.",
+                "My name is Torres.",
+                "I am Torres, your AI robot assistant.",
             ]),
             
             (r'\b(how\s*are\s*you)\b', [

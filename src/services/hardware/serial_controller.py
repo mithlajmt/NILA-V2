@@ -1,5 +1,5 @@
 """
-Serial Controller for NILA-V2 Hardware
+Serial Controller for Torres Hardware
 Manages communication with Arduino for Jaw and Eye control.
 """
 
