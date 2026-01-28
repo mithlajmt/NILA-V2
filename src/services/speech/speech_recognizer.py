@@ -30,7 +30,7 @@ class SpeechRecognizer:
         audio_config = AudioConfig(
             sample_rate=getattr(settings, 'AUDIO_SAMPLE_RATE', 16000),
             channels=getattr(settings, 'AUDIO_CHANNELS', 1),
-            vad_aggressiveness=2  # 0-3, higher = more aggressive
+            vad_aggressiveness=1  # 0-3, higher = more aggressive
         )
         device_name = getattr(settings, 'AUDIO_DEVICE_NAME', "")
         self.audio_capture = AudioCapture(config=audio_config, device_name=device_name)
@@ -177,8 +177,8 @@ class SpeechRecognizer:
                 async for chunk in self.audio_capture.stream_audio(
                     chunk_duration_ms=30,
                     timeout=timeout,
-                    silence_duration=0.5, # Reduced for snappy response
-                    min_speech_duration=0.5
+                    silence_duration=0.7, # Balanced for natural pauses
+                    min_speech_duration=0.3  # Quick response
                 ):
                     chunks.append(chunk)
                 
@@ -244,7 +244,7 @@ class SpeechRecognizer:
             audio_stream = self.audio_capture.stream_audio(
                 chunk_duration_ms=30, # Match VAD
                 timeout=timeout,
-                silence_duration=0.5, # Fast cutoff
+                silence_duration=0.7, # Balanced for natural pauses
                 min_speech_duration=0.3
             )
             

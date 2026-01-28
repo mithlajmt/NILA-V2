@@ -15,8 +15,8 @@ class AudioConfig:
     sample_rate: int = 16000  # Hz (required by Google STT)
     channels: int = 1  # Mono
     chunk_duration_ms: int = 30  # VAD frame size (10, 20, or 30ms)
-    vad_aggressiveness: int = 3  # 0-3, higher = more aggressive (filters more noise)
-    energy_threshold: int = 300  # Minimum RMS amplitude to consider as speech
+    vad_aggressiveness: int = 1  # 0-3, lower = more sensitive for distance detection
+    energy_threshold: int = 200  # Minimum RMS amplitude (lowered for distance)
 
 class AudioCapture:
     """
@@ -101,6 +101,7 @@ class AudioCapture:
             frames_per_second = 1000 / chunk_duration_ms
             silence_threshold = int(silence_duration * frames_per_second)
             min_speech_threshold = int(min_speech_duration * frames_per_second)
+            max_speech_threshold = int(10.0 * frames_per_second)  # Max 10 seconds of recording
             
             # Dynamic noise calibration
             calibration_chunks = 10 # 300ms calibration
@@ -129,14 +130,14 @@ class AudioCapture:
                     self.logger.warning(f"⚠️ Very low noise level detected ({int(avg_noise)}) - mic may not be working!")
                     self.logger.warning("   Check: Is mic connected? Is it muted? Is audio device correct?")
                     # Use minimum threshold to still allow detection
-                    avg_noise = max(avg_noise, 200)  # Minimum baseline
+                    avg_noise = max(avg_noise, 100)  # Minimum baseline (lowered for distance)
                 
-                # Adaptive threshold: slightly lower margin for sensitivity
-                dynamic_threshold = int(avg_noise * 1.3) + 100
+                # Adaptive threshold: optimized for distance detection
+                dynamic_threshold = int(avg_noise * 1.15) + 150
                 
                 # Ensure minimum threshold for very quiet environments
-                if dynamic_threshold < 300:
-                    dynamic_threshold = 300
+                if dynamic_threshold < 200:
+                    dynamic_threshold = 200
                 
                 if dynamic_threshold > 20000: dynamic_threshold = 20000 # Safety cap
                 
@@ -146,6 +147,9 @@ class AudioCapture:
                     print("⚠️ WARNING: Low noise detected - mic may not be working properly!")
                 
                 # Main streaming loop
+                speech_streak = 0
+                required_streak = 2  # Require 2 frames (60ms) - more sensitive for distance
+
                 while True:
                     if self._stop_requested:
                         print("\n🛑 Audio stream stopped by request")
@@ -194,6 +198,13 @@ class AudioCapture:
                         silence_frames += 1
                         # Yield silence to allow sentence completion/natural pauses
                         yield chunk_bytes
+                        
+                        # Check for max recording duration (prevent infinite recording)
+                        if speech_frames >= max_speech_threshold:
+                            print(f"\n⏱️ Max recording duration reached ({speech_frames * chunk_duration_ms / 1000:.1f}s)")
+                            from src.utils.latency import tracker
+                            tracker.track("vad_speech_end", f"Max duration: {speech_frames * chunk_duration_ms / 1000:.1f}s")
+                            break
                         
                         if silence_frames > silence_threshold:
                             if speech_frames >= min_speech_threshold:
