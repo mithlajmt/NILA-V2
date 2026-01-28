@@ -7,6 +7,7 @@ NILA-V2 is an advanced AI robot companion capable of speech recognition, intelli
 - **LLM Integration**: Supports OpenAI, Anthropic, and OpenRouter for intelligent responses.
 - **Text-to-Speech**:
   - **Piper TTS**: High-quality, local neural TTS with low latency (Recommended for Pi).
+  - **Edge TTS**: Free, high-quality neural TTS (Requires internet).
   - **Google Cloud TTS**: High-quality cloud-based TTS.
   - **gTTS**: Basic fallback.
 - **Hardware Control**: Controls a robotic head (jaw and eye LEDs) via Arduino using serial communication.
@@ -50,8 +51,14 @@ nano .env
 
 **Key Settings:**
 - `SPEECH_PROVIDER`: `google` (online) or `vosk` (offline)
-- `TTS_PROVIDER`: `piper` (offline, recommended)
+- `TTS_PROVIDER`: `edge` (free, high quality) or `piper` (offline)
 - `SERIAL_PORT`: `/dev/ttyUSB0` (for Arduino)
+
+### Edge TTS Setup (Raspberry Pi)
+If using Edge TTS, install `mpg123` for audio playback:
+```bash
+sudo apt-get install mpg123
+```
 
 ### 3. Running the Robot
 ```bash

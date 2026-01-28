@@ -6,6 +6,7 @@ from typing import Optional
 from src.services.tts.tts_service import TTSService
 from src.services.speech.speech_recognizer import SpeechRecognizer
 from src.services.llm.llm_service import LLMService
+from src.services.chat.basic_response_handler import BasicResponseHandler
 
 class RobotController:
     """Enhanced Robot Controller - Step 4: Speaking + Listening + AI + Multilingual TTS"""
@@ -52,6 +53,9 @@ class RobotController:
         # Initialize Feedback Service
         from src.services.feedback.feedback_service import FeedbackService
         self.feedback = FeedbackService(settings)
+        
+        # Initialize Basic Response Handler
+        self.basic_responses = BasicResponseHandler()
         
         # Initialize Operator Control (Text Input Handler)
         from src.services.operator.text_input_handler import TextInputHandler
@@ -331,6 +335,23 @@ class RobotController:
         if not self.llm_enabled or self.llm_service is None:
             # Echo mode fallback
             print(f"\n🤖 ROBOT (Echo Mode): You said '{user_input}'")
+            return
+            
+        # ⚡ CHECK BASIC RESPONSES FIRST (Bypass LLM)
+        basic_reply = self.basic_responses.get_response(user_input)
+        if basic_reply:
+            print("\n" + "="*60)
+            print("⚡ BASIC RESPONSE (Instant):")
+            print("="*60)
+            print(basic_reply)
+            print("="*60)
+            
+            self.stats['llm_responses'] += 1 # Count as response
+            
+            # Speak immediately
+            await self.text_to_speech.speak(basic_reply)
+            print("⏳ Waiting for speech to finish...")
+            await self.text_to_speech.wait_until_done()
             return
         
         try:
