@@ -51,7 +51,39 @@ You're already using **OpenAI GPT** as your LLM (AI brain), not Gemini.
 
 ---
 
-### 2. **Google Cloud TTS (Premium)**
+### 2. **Edge TTS (Free, High Quality)**
+
+**Microsoft Edge TTS - Free Neural Voices:**
+- ✅ **FREE** - No API keys or quotas needed
+- ✅ **High Quality** - Microsoft's neural voices
+- ✅ **Malayalam Support** - Native Malayalam voices
+- ✅ **Multiple Voices** - Male and female options
+- ✅ **Fast** - Low latency for responsive interactions
+- ❌ **Unofficial API** - Uses Microsoft Edge's internal API
+
+**Available Voices:**
+- **Malayalam (India)**:
+  - `ml-IN-SobhanaNeural` - Female (default)
+  - `ml-IN-MidhunNeural` - Male
+- **English (US)**:
+  - `en-US-AriaNeural` - Female (default)
+  - `en-US-GuyNeural` - Male
+
+**Configuration:**
+```env
+TTS_PROVIDER=edge
+EDGE_TTS_VOICE_GENDER=female  # or 'male'
+```
+
+**Features:**
+- ✅ Automatic language detection (Malayalam vs English)
+- ✅ Audio caching for performance
+- ✅ Natural-sounding voices
+- ✅ No cost or API limits
+
+---
+
+### 3. **Google Cloud TTS (Premium)**
 
 **What you can upgrade to:**
 - ✅ **Professional voices** - Multiple voices per language
@@ -188,19 +220,19 @@ A: Yes! You can switch between them in `.env` by changing `TTS_PROVIDER=gtts` or
 
 ## 📝 Summary
 
-| Feature | gTTS (Free) | Google Cloud TTS (Premium) |
-|---------|-------------|---------------------------|
-| **Cost** | Free | ~$4 per 1M characters |
-| **Voices** | 1 per accent | Multiple per language |
-| **Voice Selection** | ❌ No | ✅ Yes (male/female) |
-| **Pitch Control** | ❌ No | ✅ Yes |
-| **Speed Control** | ❌ Limited | ✅ Yes |
-| **Malayalam** | ❌ No | ✅ Yes |
-| **Quality** | Basic | Professional |
-| **Setup** | Easy | Requires API key |
+| Feature | gTTS (Free) | Edge TTS (Free) | Google Cloud TTS (Premium) |
+|---------|-------------|-----------------|---------------------------|
+| **Cost** | Free | Free | ~$4 per 1M characters |
+| **Voices** | 1 per accent | 2 per language | Multiple per language |
+| **Voice Selection** | ❌ No | ✅ Yes (male/female) | ✅ Yes (male/female) |
+| **Pitch Control** | ❌ No | ❌ No | ✅ Yes |
+| **Speed Control** | ❌ Limited | ❌ No | ✅ Yes |
+| **Malayalam** | ❌ No | ✅ Yes | ✅ Yes |
+| **Quality** | Basic | High (Neural) | Professional |
+| **Setup** | Easy | Easy | Requires API key |
 
 ---
 
 **Current Setup**: You're using **gTTS** with Indian accent (`co.in`).  
-**To get different voices**: Switch to **Google Cloud TTS** in your `.env` file.
-
+**Recommended**: Switch to **Edge TTS** for free high-quality voices with Malayalam support.  
+**Premium Option**: Use **Google Cloud TTS** for full voice control and customization.

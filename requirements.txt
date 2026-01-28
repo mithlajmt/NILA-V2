@@ -28,6 +28,7 @@ anthropic==0.8.0
 # Step 4 - Advanced TTS (Multilingual - Malayalam + English)
 google-cloud-texttospeech==2.14.1
 pydub==0.25.1
+edge-tts>=6.1.0  # Free Microsoft Edge TTS with Malayalam support
 
 
 # GOOGLE APIs (we’re moving to these)

@@ -105,6 +105,9 @@ Language handling:
     PIPER_NOISE_SCALE: float = Field(default=0.667, env="PIPER_NOISE_SCALE")  # Variability/Tone (0.0-1.0)
     PIPER_NOISE_W: float = Field(default=0.8, env="PIPER_NOISE_W")  # Phoneme width noise (0.0-1.0)
 
+    # Edge TTS Settings
+    EDGE_TTS_VOICE_GENDER: str = Field(default="female", env="EDGE_TTS_VOICE_GENDER")  # "female" or "male"
+
     # Hardware / Serial Settings
     SERIAL_PORT: str = Field(default="/dev/ttyUSB0", env="SERIAL_PORT")
     SERIAL_BAUD: int = Field(default=115200, env="SERIAL_BAUD")

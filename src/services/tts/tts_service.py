@@ -10,6 +10,7 @@ from .gtts_provider import GTTSProvider
 from .openai_tts_provider import OpenAITTSProvider
 from .piper_provider import PiperTTSProvider
 from .elevenlabs_provider import ElevenLabsTTSProvider
+from .edge_tts_provider import EdgeTTSProvider
 
 
 class TTSService:
@@ -87,6 +88,9 @@ class TTSService:
                 
             elif provider_name == "elevenlabs":
                 self.provider = ElevenLabsTTSProvider(self.settings)
+                
+            elif provider_name == "edge":
+                self.provider = EdgeTTSProvider(self.settings)
                 
             elif provider_name == "google_cloud":
                 from .google_cloud_tts_provider import GoogleCloudTTSProvider
@@ -198,7 +202,7 @@ class TTSService:
         Switch to a different TTS provider
         
         Args:
-            new_provider: Name of the new provider (gtts, openai, google_cloud, azure, piper)
+            new_provider: Name of the new provider (gtts, openai, google_cloud, azure, piper, elevenlabs, edge)
         """
         self.logger.info(f"🔄 Switching provider from {self.settings.TTS_PROVIDER} to {new_provider}")
         
