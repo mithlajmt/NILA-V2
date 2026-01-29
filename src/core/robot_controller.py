@@ -74,7 +74,8 @@ class RobotController:
                     status_reporter=self.status_reporter,
                     on_operator_text=self.interrupt_listening,
                     mode_callback=self.set_input_mode,              # Input mode (mic/text/hybrid)
-                    conversation_mode_callback=self.set_conversation_mode  # Conversation mode (chat/speak)
+                    conversation_mode_callback=self.set_conversation_mode,  # Conversation mode (chat/speak)
+                    speech_callback=self.trigger_speech             # Speech script trigger
                 )
                 self.logger.info("📱 Telegram bot initialized (will start when robot starts)")
             except Exception as e:
@@ -175,6 +176,29 @@ class RobotController:
     def get_conversation_mode(self) -> str:
         """Get current conversation mode"""
         return self.conversation_mode
+    
+    async def trigger_speech(self, speech_text: str):
+        """
+        Trigger a pre-written speech (bypasses LLM, direct TTS)
+        Used for exhibition speeches and scripted content
+        """
+        try:
+            self.logger.info(f"🎤 Triggering speech script ({len(speech_text)} chars)")
+            
+            # Interrupt any current listening
+            self.interrupt_listening()
+            
+            # Speak the entire speech directly (no LLM)
+            await self.text_to_speech.speak(speech_text)
+            
+            # Wait for speech to complete
+            await self.text_to_speech.wait_until_done()
+            
+            self.logger.info("✅ Speech script completed")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Speech trigger error: {e}")
+            raise
     
     def _setup_signal_handlers(self):
         """Setup graceful shutdown on CTRL+C"""

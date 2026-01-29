@@ -36,6 +36,7 @@ class TelegramBot:
         on_operator_text: Optional[callable] = None,
         mode_callback: Optional[callable] = None,
         conversation_mode_callback: Optional[callable] = None,
+        speech_callback: Optional[callable] = None,
     ):
         if not TELEGRAM_AVAILABLE:
             raise ImportError("python-telegram-bot not installed. Install with: pip install python-telegram-bot")
@@ -50,6 +51,12 @@ class TelegramBot:
         self.mode_callback = mode_callback
         # Optional callback to change conversation mode (chat/speak)
         self.conversation_mode_callback = conversation_mode_callback
+        # Optional callback to trigger speech scripts
+        self.speech_callback = speech_callback
+        
+        # Import speech scripts
+        from src.services.operator.speech_scripts import SpeechScripts
+        self.speech_scripts = SpeechScripts()
         self.logger = logging.getLogger(__name__)
         self.application = None
         self.running = False
@@ -78,6 +85,7 @@ class TelegramBot:
             self.application.add_handler(CommandHandler("status", self._handle_status))
             self.application.add_handler(CommandHandler("mic", self._handle_mic_command))
             self.application.add_handler(CommandHandler("mode", self._handle_mode_command))
+            self.application.add_handler(CommandHandler("speech", self._handle_speech_command))
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
             
             # Start bot
@@ -341,6 +349,55 @@ class TelegramBot:
         except Exception as e:
             self.logger.error(f"❌ Error handling /mode command: {e}")
             await update.message.reply_text(f"⚠️ Error: {str(e)}")
+    
+    async def _handle_speech_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /speech command - Trigger pre-written speeches"""
+        try:
+            if not context.args or len(context.args) == 0:
+                # Show available speeches
+                speeches = self.speech_scripts.list_speeches()
+                
+                if not speeches:
+                    await update.message.reply_text("⚠️ No speeches available")
+                    return
+                
+                speech_list = "🎤 **Available Speeches:**\n\n"
+                for speech_id, info in speeches.items():
+                    speech_list += f"`/speech {speech_id}` - {info['title']}\n"
+                
+                speech_list += "\n💡 Use `/speech <name>` to trigger a speech"
+                await update.message.reply_text(speech_list, parse_mode='Markdown')
+                return
+            
+            speech_id = context.args[0].lower()
+            speech = self.speech_scripts.get_speech(speech_id)
+            
+            if not speech:
+                await update.message.reply_text(
+                    f"⚠️ Speech '{speech_id}' not found. Use `/speech` to see available speeches.",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            # Trigger the speech via callback
+            if self.speech_callback:
+                try:
+                    await self.speech_callback(speech["content"])
+                    await update.message.reply_text(
+                        f"🎤 **Speech triggered:** {speech['title']}\n\n"
+                        f"Torres is now speaking...",
+                        parse_mode='Markdown'
+                    )
+                except Exception as cb_err:
+                    self.logger.error(f"❌ Speech callback error: {cb_err}")
+                    await update.message.reply_text(f"⚠️ Failed to trigger speech: {str(cb_err)}")
+            else:
+                await update.message.reply_text("⚠️ Speech feature not available (callback not set)")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error handling /speech command: {e}")
+            await update.message.reply_text(f"⚠️ Error: {str(e)}")
+
     
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle regular text messages"""
