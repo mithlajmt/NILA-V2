@@ -16,6 +16,10 @@ except ImportError:
     edge_tts = None
 
 from .base_tts_provider import BaseTTSProvider
+from ..hardware.serial_controller import SerialController
+import audioop
+import time
+from pydub import AudioSegment
 
 
 class EdgeTTSProvider(BaseTTSProvider):
@@ -35,6 +39,9 @@ class EdgeTTSProvider(BaseTTSProvider):
     
     def __init__(self, settings):
         super().__init__(settings)
+        
+        # Initialize Hardware
+        self.hardware = SerialController(settings)
         
         # Check dependencies
         if edge_tts is None:
@@ -120,7 +127,7 @@ class EdgeTTSProvider(BaseTTSProvider):
             return None
     
     async def play_audio(self, audio_file: Path):
-        """Play audio using system player (pw-play/paplay/mpg123)"""
+        """Play audio using system player and drive jaw servo"""
         try:
             self.is_speaking = True
             
@@ -142,17 +149,73 @@ class EdgeTTSProvider(BaseTTSProvider):
             
             self.logger.debug(f"🔊 Playing with {player}...")
             
+            # Start Playback Process
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
             
+            # Start Lip Sync (in parallel)
+            try:
+                # Load audio for analysis (MP3 supported via ffmpeg/libav)
+                seg = AudioSegment.from_file(str(audio_file))
+                
+                # Parameters
+                chunk_ms = 50
+                chunk_size = int(seg.frame_rate * chunk_ms / 1000) * seg.frame_width * seg.channels
+                
+                # We need raw data properties
+                sample_width = seg.sample_width
+                
+                start_time = time.time()
+                duration_sec = len(seg) / 1000.0
+                
+                while not process.get_returncode() and (time.time() - start_time) < duration_sec:
+                    # Sync with playback time
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    
+                    # Get current chunk position
+                    # pydub raw_data is just bytes
+                    start_byte = int((elapsed_ms / 1000) * seg.frame_rate) * seg.frame_width * seg.channels
+                    
+                    # Ensure alignment
+                    start_byte = start_byte - (start_byte % (seg.frame_width * seg.channels))
+                    end_byte = start_byte + chunk_size
+                    
+                    if end_byte < len(seg.raw_data):
+                        chunk_data = seg.raw_data[start_byte:end_byte]
+                        
+                        if chunk_data:
+                            # Calculate RMS
+                            rms = audioop.rms(chunk_data, sample_width)
+                            
+                            # Normalize (experiment with scaling factor)
+                            scaling_factor = 2000
+                            intensity = min(100, int((rms / scaling_factor) * 100))
+                            
+                            self.hardware.send_jaw_intensity(intensity)
+                    
+                    # Small sleep to yield
+                    await asyncio.sleep(0.04)
+                    
+                    # check if process finished
+                    if process.returncode is not None:
+                         break
+                         
+            except Exception as e:
+                self.logger.warning(f"⚠️ Lip sync failed (audio still playing): {e}")
+
             await process.wait()
+            
+            # Close jaw
+            self.hardware.send_jaw_intensity(0)
+            
             self.logger.debug("✅ Playback complete")
             
         except Exception as e:
             self.logger.error(f"❌ Playback error: {e}")
+            self.hardware.send_jaw_intensity(0)
         finally:
             self.is_speaking = False
     
