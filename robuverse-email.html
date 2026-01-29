@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .container {
+            max-width: 680px;
+            /* increased width */
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: #1e40af;
+            color: white;
+            padding: 18px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .content {
+            background: #f1f5f9;
+            padding: 32px;
+            /* more breathing room */
+            border-radius: 0 0 8px 8px;
+        }
+
+        .highlight {
+            color: #1e40af;
+            font-weight: bold;
+        }
+
+        .image-box img {
+            width: 100%;
+            border-radius: 6px;
+            margin: 20px 0;
+            height: 400px;
+        }
+
+        .cta {
+            background: #e0e7ff;
+            padding: 18px;
+            border-radius: 6px;
+            margin: 24px 0;
+            text-align: center;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 18px;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="margin:0; font-size:26px;">ROBUVERSE</h1>
+            <p style="margin:6px 0 0; font-size:14px;">
+                Robotics Education for Schools
+            </p>
+        </div>
+
+        <div class="content">
+            <p>Dear Principal / Administrator,</p>
+
+            <p>
+                Greetings from <span class="highlight">ROBUVERSE</span>.
+                We are a robotics education startup based in Kozhikode, working with schools across Kerala.
+            </p>
+
+            <!-- Optional real classroom image -->
+            <div class="image-box">
+                <img src="https://jpfzkybrojfyimqalqqb.supabase.co/storage/v1/object/public/robuverse/Gvhss%20kizhuparamba.png"
+                    alt="Robuverse robotics session in school">
+            </div>
+
+            <p>
+                We bring <strong>hands-on robotics learning and experience</strong> to students using real kits,
+                practical projects, and interactive sessions.
+                We believe students of <strong>{{ $json.Name }}</strong> would benefit greatly from this exposure. We
+                would love to discuss how we can bring robotics education to <strong>{{ $json.Name }}</strong>
+            </p>
+
+            <h3>🎯 What we offer for schools:</h3>
+            <ul>
+                <li><strong>Robotics Lab Setup:</strong> Age-appropriate kits & guidance</li>
+                <li><strong>Student Workshops:</strong> Practical sessions for Grades 5–10</li>
+                <li><strong>Teacher Training:</strong> Hands-on training to support classroom delivery</li>
+                <li><strong>Robotics Clubs:</strong> Weekly or monthly programs</li>
+                <li><strong>Competition Training:</strong> State & national level preparation</li>
+            </ul>
+
+
+            <p>
+                <strong>Recent work:</strong>
+                We have conducted robotics sessions and workshops in multiple schools across
+                Kozhikode, Palakkad, and Malappuram
+                with strong student participation and positive feedback.
+            </p>
+
+
+            <div class="cta">
+                <p style="margin:0;"><strong>Next step (quick & easy):</strong></p>
+                <p style="margin:10px 0;">
+                    💬 <a
+                        href="https://wa.me/918606893474?text=Hello%20Robuverse%2C%20we%20are%20from%20{{ $json.Name }}%20and%20would%20like%20to%20know%20more%20about%20your%20robotics%20programs."
+                        style="color:#1e40af; font-weight:bold; text-decoration:none;">
+                        Message us on WhatsApp
+                    </a>
+                </p>
+                <p style="margin:6px 0 0;">
+                    or call us at <strong>+91 7356284208,+91 8606893474</strong>
+                </p>
+            </div>
+
+            <p>
+                You may also reply to this email — we will coordinate at your convenience.
+            </p>
+
+
+            <p>
+                Warm regards,<br>
+                <strong>Team Robuverse</strong><br><br>
+                ROBUVERSE<br>
+                📞 +91 7356284208<br>
+                📞 +91 8606893474<br>
+                🌐 www.robuverse.com
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>ROBUVERSE | Robotics Education for the Next Generation</p>
+            <p>If you prefer not to receive these emails, please reply with “unsubscribe”.</p>
+        </div>
+    </div>
+</body>
+
+</html>
