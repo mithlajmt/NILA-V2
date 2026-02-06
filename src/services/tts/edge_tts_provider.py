@@ -156,7 +156,8 @@ class EdgeTTSProvider(BaseTTSProvider):
                 stderr=asyncio.subprocess.DEVNULL
             )
             
-            # Start Lip Sync (in parallel)
+            # Start Lip Sync (in parallel) - OPTIONAL (audio plays regardless)
+            jaw_sync_available = True
             try:
                 # Load audio for analysis (MP3 supported via ffmpeg/libav)
                 seg = AudioSegment.from_file(str(audio_file))
@@ -171,7 +172,7 @@ class EdgeTTSProvider(BaseTTSProvider):
                 start_time = time.time()
                 duration_sec = len(seg) / 1000.0
                 
-                while not process.get_returncode() and (time.time() - start_time) < duration_sec:
+                while process.returncode is None and (time.time() - start_time) < duration_sec:
                     # Sync with playback time
                     elapsed_ms = (time.time() - start_time) * 1000
                     
@@ -194,7 +195,14 @@ class EdgeTTSProvider(BaseTTSProvider):
                             scaling_factor = 2000
                             intensity = min(100, int((rms / scaling_factor) * 100))
                             
-                            self.hardware.send_jaw_intensity(intensity)
+                            # Send jaw command (safe - won't crash if hardware unavailable)
+                            try:
+                                self.hardware.send_jaw_intensity(intensity)
+                            except Exception as jaw_err:
+                                if jaw_sync_available:
+                                    self.logger.warning(f"⚠️ Jaw hardware unavailable: {jaw_err}")
+                                    self.logger.info("   Audio will continue without jaw movement")
+                                    jaw_sync_available = False
                     
                     # Small sleep to yield
                     await asyncio.sleep(0.04)
@@ -208,14 +216,20 @@ class EdgeTTSProvider(BaseTTSProvider):
 
             await process.wait()
             
-            # Close jaw
-            self.hardware.send_jaw_intensity(0)
+            # Close jaw (safe - won't crash if hardware unavailable)
+            try:
+                self.hardware.send_jaw_intensity(0)
+            except Exception as jaw_err:
+                self.logger.debug(f"Jaw close command failed: {jaw_err}")
             
             self.logger.debug("✅ Playback complete")
             
         except Exception as e:
             self.logger.error(f"❌ Playback error: {e}")
-            self.hardware.send_jaw_intensity(0)
+            try:
+                self.hardware.send_jaw_intensity(0)
+            except Exception as jaw_err:
+                self.logger.debug(f"Jaw close command failed: {jaw_err}")
         finally:
             self.is_speaking = False
     

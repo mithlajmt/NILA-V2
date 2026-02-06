@@ -155,8 +155,9 @@ class PiperTTSProvider(BaseTTSProvider):
             self.logger.debug(f"🔊 Playing with {player}...")
             process = subprocess.Popen(cmd)
             
-            # Start Lip Sync Loop
+            # Start Lip Sync Loop - OPTIONAL (audio plays regardless)
             start_time = time.time()
+            jaw_sync_available = True
             
             # Open WAV file to read amplitude data
             with wave.open(str(audio_file), 'rb') as wf:
@@ -188,22 +189,34 @@ class PiperTTSProvider(BaseTTSProvider):
                             scaling_factor = 2000 
                             intensity = min(100, int((rms / scaling_factor) * 100))
                             
-                            # Send to Hardware
-                            self.hardware.send_jaw_intensity(intensity)
+                            # Send to Hardware (safe - won't crash if hardware unavailable)
+                            try:
+                                self.hardware.send_jaw_intensity(intensity)
+                            except Exception as jaw_err:
+                                if jaw_sync_available:
+                                    self.logger.warning(f"⚠️ Jaw hardware unavailable: {jaw_err}")
+                                    self.logger.info("   Audio will continue without jaw movement")
+                                    jaw_sync_available = False
                     
                     await asyncio.sleep(0.05) 
             
             # Ensure process finishes
             process.wait()
             
-            # Ensure jaw is closed at the end
-            self.hardware.send_jaw_intensity(0)
+            # Ensure jaw is closed at the end (safe - won't crash if hardware unavailable)
+            try:
+                self.hardware.send_jaw_intensity(0)
+            except Exception as jaw_err:
+                self.logger.debug(f"Jaw close command failed: {jaw_err}")
             self.is_speaking = False
             self.logger.debug("✅ Audio playback & Lip Sync completed")
                 
         except Exception as e:
             self.is_speaking = False
-            self.hardware.send_jaw_intensity(0)
+            try:
+                self.hardware.send_jaw_intensity(0)
+            except Exception as jaw_err:
+                self.logger.debug(f"Jaw close command failed: {jaw_err}")
             self.logger.error(f"❌ Audio playback error: {e}")
     
     async def _check_cache_size(self):

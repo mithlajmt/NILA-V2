@@ -379,20 +379,6 @@ class RobotController:
             return
         
         try:
-            # ⚡ IMMEDIATE ACKNOWLEDGMENT - User knows they were heard!
-            # This plays while LLM is thinking, masking the processing delay
-            import random
-            acknowledgments = [
-                "ഓക്കേ",              # "Okay"
-                "ശരി",                # "Right" 
-                "എനിക്ക് മനസ്സിലായി",  # "I understand"
-            ]
-            ack = random.choice(acknowledgments)
-            
-            # Speak acknowledgment (non-blocking - don't wait for playback)
-            asyncio.create_task(self.text_to_speech.speak(ack))
-            await asyncio.sleep(0.15)  # Small delay to let acknowledgment start
-            
             print(f"\n🧠 Thinking...", end="", flush=True)
             self.feedback.start_thinking()
             
@@ -531,6 +517,10 @@ class RobotController:
         self.is_running = False
         self.conversation_active = False
         self.logger.info("🛑 Robot stopping...")
+        
+        # Stop TTS immediately (clears queue and cancels worker)
+        if hasattr(self, 'text_to_speech'):
+            self.text_to_speech.stop_speaking()
         
         # Force stop audio capture to break the listening loop immediately
         if hasattr(self, 'speech_recognizer') and hasattr(self.speech_recognizer, 'audio_capture'):

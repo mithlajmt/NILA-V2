@@ -162,7 +162,7 @@ class TTSService:
         # 1. Clear queue
         while not self.playback_queue.empty():
             try:
-                self.playback_queue.get_nowait()
+                item = self.playback_queue.get_nowait()
                 self.playback_queue.task_done()
             except:
                 break
@@ -170,6 +170,10 @@ class TTSService:
         # 2. Stop current provider playback
         if self.provider:
             self.provider.stop_speaking()
+        
+        # 3. Cancel worker task to break out of wait_until_done()
+        if self.worker_task and not self.worker_task.done():
+            self.worker_task.cancel()
     
     def cleanup(self):
         """Cleanup resources"""
@@ -192,10 +196,42 @@ class TTSService:
             return self.provider.is_speaking
         return False
         
-    async def wait_until_done(self):
-        """Wait until all queued audio is finished playing"""
-        if self.playback_queue:
-            await self.playback_queue.join()
+    async def wait_until_done(self, timeout: float = None):
+        """
+        Wait until all queued audio is finished playing
+        
+        Args:
+            timeout: Maximum time to wait in seconds (None = wait forever, but check periodically)
+        """
+        if not self.playback_queue:
+            return
+        
+        import asyncio
+        start_time = asyncio.get_event_loop().time()
+        
+        # Poll the queue instead of blocking indefinitely
+        # This allows Ctrl+C to interrupt
+        while not self.playback_queue.empty():
+            try:
+                # Wait for a short time, then check again
+                # This makes it cancellable
+                await asyncio.wait_for(
+                    self.playback_queue.join(),
+                    timeout=0.5  # Check every 0.5 seconds
+                )
+                # If join() completes, queue is empty
+                break
+            except asyncio.TimeoutError:
+                # Timeout - check if we should continue waiting
+                if timeout and (asyncio.get_event_loop().time() - start_time) > timeout:
+                    self.logger.warning("⚠️ wait_until_done() timed out")
+                    break
+                # Otherwise continue waiting
+                continue
+            except asyncio.CancelledError:
+                # Task was cancelled (e.g., Ctrl+C)
+                self.logger.info("🛑 wait_until_done() cancelled")
+                raise
     
     def switch_provider(self, new_provider: str):
         """
