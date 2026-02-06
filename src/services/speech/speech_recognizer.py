@@ -177,8 +177,8 @@ class SpeechRecognizer:
                 async for chunk in self.audio_capture.stream_audio(
                     chunk_duration_ms=30,
                     timeout=timeout,
-                    silence_duration=0.7, # Balanced for natural pauses
-                    min_speech_duration=0.3  # Quick response
+                    silence_duration=0.5, # Balanced for natural pauses
+                    min_speech_duration=0.15  # Quick response, accept short utterances
                 ):
                     chunks.append(chunk)
                 

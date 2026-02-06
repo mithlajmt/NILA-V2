@@ -55,7 +55,7 @@ class AudioCapture:
                           chunk_duration_ms: int = 30, # Match VAD frame size (30ms)
                           timeout: float = 30.0,
                           silence_duration: float = 0.7, # Fast cutoff
-                          min_speech_duration: float = 0.2) -> AsyncGenerator[bytes, None]: 
+                          min_speech_duration: float = 0.1) -> AsyncGenerator[bytes, None]: 
         """
         Stream audio chunks asynchronously using sounddevice.
         Optimized for LOW LATENCY.
@@ -171,16 +171,28 @@ class AudioCapture:
                     
                     # VAD Check
                     is_speech = False
+                    vad_result = "N/A"  # Track VAD decision
+                    
                     if rms > dynamic_threshold:
                         try:
                             # 30ms chunk is valid for VAD directly
                             is_speech = self.vad.is_speech(chunk_bytes, self.config.sample_rate)
-                        except Exception:
+                            vad_result = "SPEECH" if is_speech else "NOISE"
+                        except Exception as e:
                             is_speech = False
+                            vad_result = f"ERROR:{e}"
+                    else:
+                        vad_result = "BELOW_THRESHOLD"
+                    
+                    # DEBUG: Show detailed chunk analysis
+                    if has_started_speaking or is_speech:
+                        status_icon = "🗣️" if is_speech else "🔇"
+                        print(f"\n{status_icon} [Energy: {rms:4d} | Threshold: {dynamic_threshold} | VAD: {vad_result:15s} | Speech: {speech_frames:3d} | Silence: {silence_frames:2d}]", end="", flush=True)
                     
                     if is_speech:
                         if not has_started_speaking:
-                            print(f"\n🗣️ Speech! (Energy: {rms})", end="", flush=True)
+                            print(f"\n🎤 ═══ RECORDING STARTED ═══")
+                            print(f"🗣️ Speech! (Energy: {rms})", end="", flush=True)
                             from src.utils.latency import tracker
                             tracker.track("vad_speech_start", f"Energy: {rms}")
                             has_started_speaking = True
@@ -208,16 +220,16 @@ class AudioCapture:
                         
                         if silence_frames > silence_threshold:
                             if speech_frames >= min_speech_threshold:
-                                print(f"\n✅ Capture complete ({speech_frames * chunk_duration_ms / 1000:.1f}s speech)")
+                                print(f"\n✅ Capture complete ({speech_frames * chunk_duration_ms / 1000:.1f}s speech, {silence_frames} silence frames)")
                                 from src.utils.latency import tracker
                                 tracker.track("vad_speech_end", f"Duration: {speech_frames * chunk_duration_ms / 1000:.1f}s")
                                 break
                             else:
                                 # Start over - too short (noise click)
+                                print(f"\n⚠️ False alarm - too short ({speech_frames} frames < {min_speech_threshold} required). Resetting...")
                                 has_started_speaking = False
                                 speech_frames = 0
                                 silence_frames = 0
-                                # print(".", end="", flush=True) # debug noise
                     else:
                         # Not speaking, not started -> Buffer this chunk
                         pre_speech_buffer.append(chunk_bytes)
