@@ -46,7 +46,11 @@ void setup() {
   Serial.begin(115200);
   
   // Attach Servos
+#if defined(PA3)
+  servojaw.attach(PA3);
+#else
   servojaw.attach(7);
+#endif
   servo1.attach(9);
   servo2.attach(10);
   servo3.attach(6);
@@ -101,6 +105,9 @@ void handleJawMovement() {
     lastCommandTime = millis();
     targetJawAngle = map(intensity, 0, 100, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
     targetJawAngle = constrain(targetJawAngle, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
+    // Debug: echo received intensity
+    Serial.print("INTENSITY RECEIVED: ");
+    Serial.println(intensity);
   }
   
   // Safety Timeout

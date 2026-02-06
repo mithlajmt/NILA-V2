@@ -147,7 +147,7 @@ class EdgeTTSProvider(BaseTTSProvider):
             if player == 'mpg123':
                 cmd.insert(1, '-q')  # Quiet mode
             
-            self.logger.debug(f"🔊 Playing with {player}...")
+            self.logger.info(f"🔊 Playing with {player}...")
             
             # Start Playback Process
             process = await asyncio.create_subprocess_exec(
@@ -155,64 +155,88 @@ class EdgeTTSProvider(BaseTTSProvider):
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
-            
+
             # Start Lip Sync (in parallel) - OPTIONAL (audio plays regardless)
             jaw_sync_available = True
             try:
+                # Ensure hardware connection is attempted
+                try:
+                    if not self.hardware.is_connected:
+                        self.hardware.connect()
+                except Exception:
+                    pass
+
                 # Load audio for analysis (MP3 supported via ffmpeg/libav)
                 seg = AudioSegment.from_file(str(audio_file))
-                
+
                 # Parameters
                 chunk_ms = 50
                 chunk_size = int(seg.frame_rate * chunk_ms / 1000) * seg.frame_width * seg.channels
-                
-                # We need raw data properties
+
+                # Raw data properties
                 sample_width = seg.sample_width
-                
+
                 start_time = time.time()
                 duration_sec = len(seg) / 1000.0
-                
-                while process.returncode is None and (time.time() - start_time) < duration_sec:
+
+                # Create a task to await process completion
+                wait_task = asyncio.create_task(process.wait())
+
+                # Run until playback finishes or duration exceeded (small grace)
+                max_run = duration_sec * 1.5
+                while (not wait_task.done()) and (time.time() - start_time) < max_run:
                     # Sync with playback time
                     elapsed_ms = (time.time() - start_time) * 1000
-                    
-                    # Get current chunk position
-                    # pydub raw_data is just bytes
+
+                    # Calculate byte window
                     start_byte = int((elapsed_ms / 1000) * seg.frame_rate) * seg.frame_width * seg.channels
-                    
-                    # Ensure alignment
-                    start_byte = start_byte - (start_byte % (seg.frame_width * seg.channels))
+                    start_byte = max(0, start_byte - (start_byte % (seg.frame_width * seg.channels)))
                     end_byte = start_byte + chunk_size
-                    
-                    if end_byte < len(seg.raw_data):
+
+                    if end_byte <= len(seg.raw_data):
                         chunk_data = seg.raw_data[start_byte:end_byte]
-                        
                         if chunk_data:
-                            # Calculate RMS
+                            # Calculate RMS and map to intensity
                             rms = audioop.rms(chunk_data, sample_width)
-                            
-                            # Normalize (experiment with scaling factor)
                             scaling_factor = 2000
                             intensity = min(100, int((rms / scaling_factor) * 100))
-                            
-                            # Send jaw command (safe - won't crash if hardware unavailable)
+
+                            # Debug log the computed intensity
+                            self.logger.info(f"🔊 Lip-sync intensity: {intensity} (rms={rms})")
+
+                            # Send jaw command (attempt reconnect inside controller if needed)
                             try:
+                                if not self.hardware.is_connected:
+                                    self.logger.debug("🔌 Hardware disconnected before send, attempting connect")
+                                    try:
+                                        self.hardware.connect()
+                                    except Exception:
+                                        pass
                                 self.hardware.send_jaw_intensity(intensity)
                             except Exception as jaw_err:
                                 if jaw_sync_available:
                                     self.logger.warning(f"⚠️ Jaw hardware unavailable: {jaw_err}")
                                     self.logger.info("   Audio will continue without jaw movement")
                                     jaw_sync_available = False
-                    
-                    # Small sleep to yield
-                    await asyncio.sleep(0.04)
-                    
-                    # check if process finished
-                    if process.returncode is not None:
-                         break
-                         
+
+                    await asyncio.sleep(chunk_ms / 1000.0)
+
+                # Ensure process finished
+                if not wait_task.done():
+                    try:
+                        await asyncio.wait_for(wait_task, timeout=2.0)
+                    except asyncio.TimeoutError:
+                        # Give up waiting; process may have finished independently
+                        pass
+
             except Exception as e:
+                # Log full exception for diagnosis
                 self.logger.warning(f"⚠️ Lip sync failed (audio still playing): {e}")
+                try:
+                    import traceback
+                    self.logger.debug(traceback.format_exc())
+                except Exception:
+                    pass
 
             await process.wait()
             
@@ -222,7 +246,7 @@ class EdgeTTSProvider(BaseTTSProvider):
             except Exception as jaw_err:
                 self.logger.debug(f"Jaw close command failed: {jaw_err}")
             
-            self.logger.debug("✅ Playback complete")
+            self.logger.info("✅ Playback complete")
             
         except Exception as e:
             self.logger.error(f"❌ Playback error: {e}")

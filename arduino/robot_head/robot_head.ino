@@ -18,7 +18,12 @@
 #include <Servo.h>
 
 // Pin Definitions
+#if defined(PA3)
+// Use PA3 on STM32 boards if available
+const int SERVO_PIN = PA3;
+#else
 const int SERVO_PIN = 7;
+#endif
 const int EYE_LED_PIN = A1;
 
 // Servo Configuration
@@ -65,6 +70,9 @@ void loop() {
     // Map intensity (0-100) to target angle (50-110)
     targetAngle = map(intensity, 0, 100, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
     targetAngle = constrain(targetAngle, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
+    // Debug: echo received intensity
+    Serial.print("INTENSITY RECEIVED: ");
+    Serial.println(intensity);
   }
   
   // Safety Timeout: Close jaw if silence

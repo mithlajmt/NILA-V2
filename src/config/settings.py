@@ -115,6 +115,13 @@ Language handling:
     # Hardware / Serial Settings
     SERIAL_PORT: str = Field(default="/dev/ttyUSB0", env="SERIAL_PORT")
     SERIAL_BAUD: int = Field(default=115200, env="SERIAL_BAUD")
+    
+    # GPIO Jaw Control (Raspberry Pi)
+    USE_GPIO_JAW: bool = Field(default=False, env="USE_GPIO_JAW")  # Use GPIO instead of serial for jaw
+    GPIO_JAW_PIN: int = Field(default=17, env="GPIO_JAW_PIN")  # BCM pin number for servo
+    JAW_CLOSED_ANGLE: int = Field(default=50, env="JAW_CLOSED_ANGLE")  # Servo angle when closed
+    JAW_OPEN_ANGLE: int = Field(default=110, env="JAW_OPEN_ANGLE")  # Servo angle when open
+    
     SERVO_MIN_ANGLE: int = Field(default=90, env="SERVO_MIN_ANGLE")
     SERVO_MAX_ANGLE: int = Field(default=130, env="SERVO_MAX_ANGLE")
     
