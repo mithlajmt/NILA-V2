@@ -133,11 +133,11 @@ class AudioCapture:
                     avg_noise = max(avg_noise, 100)  # Minimum baseline (lowered for distance)
                 
                 # Adaptive threshold: optimized for distance detection
-                dynamic_threshold = int(avg_noise * 1.15) + 150
+                dynamic_threshold = int(avg_noise * 1.10) + 100
                 
                 # Ensure minimum threshold for very quiet environments
-                if dynamic_threshold < 200:
-                    dynamic_threshold = 200
+                if dynamic_threshold < 150:
+                    dynamic_threshold = 150
                 
                 if dynamic_threshold > 20000: dynamic_threshold = 20000 # Safety cap
                 
@@ -308,8 +308,8 @@ class AudioCapture:
             # Set threshold significantly above noise floor
             # If noise is 23000, we need threshold around 25000?
             # Or is 23000 DC offset?
-            # Safe margin: Noise * 1.2 + constant
-            dynamic_threshold = int(avg_noise * 1.2) + 300
+            # Safe margin: Noise * 1.10 + constant
+            dynamic_threshold = int(avg_noise * 1.10) + 100
             
             # Cap the threshold to avoid blocking everything if noise is insane
             # Max possible RMS for 16-bit is ~32767. 
