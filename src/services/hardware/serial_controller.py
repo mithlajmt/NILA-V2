@@ -51,7 +51,7 @@ class SerialController:
         if getattr(settings, "USE_GPIO_JAW", False) or str(self.port).upper() == "GPIO":
             self.gpio_mode = True
             # Use BCM numbering by default
-            self.gpio_jaw_pin = getattr(settings, "GPIO_JAW_PIN", 17)
+            self.gpio_jaw_pin = getattr(settings, "GPIO_JAW_PIN", 14)
             self.jaw_closed_angle = getattr(settings, "JAW_CLOSED_ANGLE", 50)
             self.jaw_open_angle = getattr(settings, "JAW_OPEN_ANGLE", 110)
         
@@ -88,7 +88,7 @@ class SerialController:
             closed_angle = int(self.jaw_closed_angle)
             duty = self._angle_to_duty(closed_angle) / 100.0  # gpiozero expects 0.0-1.0
             self._gpio_pwm.value = duty
-            self.logger.info(f"✅ GPIO jaw control initialized on BCM {self.gpio_jaw_pin}")
+            self.logger.debug(f"✅ GPIO jaw control initialized on BCM {self.gpio_jaw_pin}")
             self.is_connected = True
         except Exception as e:
             self.logger.warning(f"⚠️ GPIO initialization failed: {e}")
@@ -175,7 +175,7 @@ class SerialController:
                         return
                 # gpiozero expects 0.0-1.0 range
                 self._gpio_pwm.value = duty / 100.0
-                self.logger.info(f"➡️ GPIO jaw angle set: {angle:.1f}° (intensity={intensity}) duty={duty:.2f}%")
+                self.logger.debug(f"➡️ GPIO jaw angle set: {angle:.1f}° (intensity={intensity}) duty={duty:.2f}%")
             except Exception as e:
                 self.logger.error(f"❌ GPIO jaw control error: {e}")
             return
@@ -214,7 +214,7 @@ class SerialController:
                 except Exception:
                     pass
                 self._gpio_pwm = None
-                self.logger.info("🔌 GPIO jaw control stopped")
+                self.logger.debug("🔌 GPIO jaw control stopped")
         except Exception:
             pass
 

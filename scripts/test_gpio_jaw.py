@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test GPIO jaw servo control on Raspberry Pi.
-Drives servo on BCM pin 17 through intensity values.
+Drives servo on BCM pin 14 through intensity values.
 """
 import sys
 import time
@@ -13,7 +13,7 @@ from src.services.hardware.serial_controller import SerialController
 class MockSettings:
     SERIAL_PORT = "GPIO"
     USE_GPIO_JAW = True
-    GPIO_JAW_PIN = 17
+    GPIO_JAW_PIN = 14
     JAW_CLOSED_ANGLE = 50
     JAW_OPEN_ANGLE = 110
 

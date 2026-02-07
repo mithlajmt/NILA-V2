@@ -202,7 +202,7 @@ class EdgeTTSProvider(BaseTTSProvider):
                             intensity = min(100, int((rms / scaling_factor) * 100))
 
                             # Debug log the computed intensity
-                            self.logger.info(f"🔊 Lip-sync intensity: {intensity} (rms={rms})")
+                            self.logger.debug(f"🔊 Lip-sync intensity: {intensity} (rms={rms})")
 
                             # Send jaw command (attempt reconnect inside controller if needed)
                             try:
@@ -216,7 +216,7 @@ class EdgeTTSProvider(BaseTTSProvider):
                             except Exception as jaw_err:
                                 if jaw_sync_available:
                                     self.logger.warning(f"⚠️ Jaw hardware unavailable: {jaw_err}")
-                                    self.logger.info("   Audio will continue without jaw movement")
+                                    self.logger.debug("   Audio will continue without jaw movement")
                                     jaw_sync_available = False
 
                     await asyncio.sleep(chunk_ms / 1000.0)

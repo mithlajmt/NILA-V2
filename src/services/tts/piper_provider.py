@@ -195,7 +195,7 @@ class PiperTTSProvider(BaseTTSProvider):
                             except Exception as jaw_err:
                                 if jaw_sync_available:
                                     self.logger.warning(f"⚠️ Jaw hardware unavailable: {jaw_err}")
-                                    self.logger.info("   Audio will continue without jaw movement")
+                                    self.logger.debug("   Audio will continue without jaw movement")
                                     jaw_sync_available = False
                     
                     await asyncio.sleep(0.05) 

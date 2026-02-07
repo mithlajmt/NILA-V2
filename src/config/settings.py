@@ -118,7 +118,7 @@ Language handling:
     
     # GPIO Jaw Control (Raspberry Pi)
     USE_GPIO_JAW: bool = Field(default=False, env="USE_GPIO_JAW")  # Use GPIO instead of serial for jaw
-    GPIO_JAW_PIN: int = Field(default=17, env="GPIO_JAW_PIN")  # BCM pin number for servo
+    GPIO_JAW_PIN: int = Field(default=14, env="GPIO_JAW_PIN")  # BCM pin number for servo
     JAW_CLOSED_ANGLE: int = Field(default=50, env="JAW_CLOSED_ANGLE")  # Servo angle when closed
     JAW_OPEN_ANGLE: int = Field(default=110, env="JAW_OPEN_ANGLE")  # Servo angle when open
     
