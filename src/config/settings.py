@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     SONIOX_SPEAKER_DIARIZATION: bool = Field(default=False, env="SONIOX_SPEAKER_DIARIZATION")  # Speaker separation
     SONIOX_ENDPOINT_DETECTION: bool = Field(default=True, env="SONIOX_ENDPOINT_DETECTION")  # Auto endpoint detection
     
+    # Sarvam AI STT Settings (Indic Languages)
+    SARVAM_API_KEY: str = Field(default="", env="SARVAM_API_KEY")
+    SARVAM_MODEL: str = Field(default="saaras:v3", env="SARVAM_MODEL")
+    SARVAM_MODE: str = Field(default="transcribe", env="SARVAM_MODE")  # transcribe, translate, verbatim, translit, codemix
+    
     # LLM Settings
     LLM_MODEL: str = Field(default="gpt-3.5-turbo", env="LLM_MODEL")  # Model name for the provider
     LLM_MAX_TOKENS: int = Field(default=30, env="LLM_MAX_TOKENS")  # Max tokens in response

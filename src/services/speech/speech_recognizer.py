@@ -148,6 +148,26 @@ class SpeechRecognizer:
                 self.logger.warning(f"⚠️ Soniox init failed: {e}. Falling back to Google.")
                 self.provider_name = "google"
                 self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "ml-IN"))
+        elif self.provider_name == "sarvam":
+            try:
+                from src.services.speech.providers.sarvam_stt_provider import SarvamSTTProvider
+                
+                # Initialize Sarvam with API key and settings
+                api_key = getattr(self.settings, 'SARVAM_API_KEY', '')
+                if not api_key:
+                    raise ValueError("SARVAM_API_KEY not set in environment")
+                
+                self.provider = SarvamSTTProvider(
+                    api_key=api_key,
+                    model=getattr(self.settings, 'SARVAM_MODEL', 'saaras:v3'),
+                    mode=getattr(self.settings, 'SARVAM_MODE', 'transcribe')
+                )
+                
+                self.logger.info(f"🎙️ Sarvam provider initialized (Indic STT support)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Sarvam init failed: {e}. Falling back to Google.")
+                self.provider_name = "google"
+                self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "ml-IN"))
         
         else:
             self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
