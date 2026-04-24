@@ -98,8 +98,11 @@ class SarvamSTTProvider(BaseSTTProvider):
                 text = text.strip()
                 self.logger.info(f"✅ Transcribed (Sarvam): '{text}'")
                 return STTResult(text=text, language=language)
+            elif text == "":
+                # It's an empty transcript (common on silence or abort)
+                return STTResult(text=None, error="No speech detected")
             else:
-                self.logger.warning("⚠️ No transcript deeply found in Sarvam response.")
+                self.logger.warning(f"⚠️ No transcript deeply found in Sarvam response: {response}")
                 return STTResult(text=None, error="No transcription received")
 
         except Exception as e:

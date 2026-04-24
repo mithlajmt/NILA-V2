@@ -209,29 +209,32 @@ class TTSService:
         import asyncio
         start_time = asyncio.get_event_loop().time()
         
-        # Poll the queue instead of blocking indefinitely
-        # This allows Ctrl+C to interrupt
-        while not self.playback_queue.empty():
+        while True:
+            # First wait for the queue to be fully processed (task_done called on all items)
             try:
-                # Wait for a short time, then check again
-                # This makes it cancellable
                 await asyncio.wait_for(
                     self.playback_queue.join(),
-                    timeout=0.5  # Check every 0.5 seconds
+                    timeout=0.1
                 )
-                # If join() completes, queue is empty
-                break
             except asyncio.TimeoutError:
-                # Timeout - check if we should continue waiting
+                # Still waiting on queue items
                 if timeout and (asyncio.get_event_loop().time() - start_time) > timeout:
-                    self.logger.warning("⚠️ wait_until_done() timed out")
+                    self.logger.warning("⚠️ wait_until_done() timed out waiting for queue")
                     break
-                # Otherwise continue waiting
                 continue
             except asyncio.CancelledError:
-                # Task was cancelled (e.g., Ctrl+C)
                 self.logger.info("🛑 wait_until_done() cancelled")
                 raise
+                
+            # Queue is fully processed. Now wait for the provider to explicitly finish speaking.
+            if self.is_speaking():
+                if timeout and (asyncio.get_event_loop().time() - start_time) > timeout:
+                    self.logger.warning("⚠️ wait_until_done() timed out waiting for speaking to stop")
+                    break
+                await asyncio.sleep(0.1)
+                continue
+                
+            break
     
     def switch_provider(self, new_provider: str):
         """
