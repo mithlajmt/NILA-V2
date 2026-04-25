@@ -95,6 +95,10 @@ class TTSService:
             elif provider_name == "google_cloud":
                 from .google_cloud_tts_provider import GoogleCloudTTSProvider
                 self.provider = GoogleCloudTTSProvider(self.settings)
+
+            elif provider_name == "sarvam":
+                from .sarvam_tts_provider import SarvamTTSProvider
+                self.provider = SarvamTTSProvider(self.settings)
                 
             elif provider_name == "azure":
                 # Future: Azure TTS provider
