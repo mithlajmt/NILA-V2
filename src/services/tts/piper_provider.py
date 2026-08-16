@@ -44,7 +44,26 @@ class PiperTTSProvider(BaseTTSProvider):
         self.max_cache_size_mb = 100
         self.cache_cleanup_threshold = 0.8
         
+        # Subprocess tracking for interruption cancellation
+        self.current_process: Optional[subprocess.Popen] = None
+
+        # EventBus Integration for Interruption handling
+        from src.core.event_bus import EventBus
+        self.event_bus = EventBus()
+        self.event_bus.subscribe("speech.interrupted", self._handle_interruption_event)
+        self.event_bus.subscribe("state.change", self._handle_state_change_event)
+        
         self.logger.info(f"✅ Piper TTS initialized (Model: {self.model_path.name})")
+
+    def _handle_interruption_event(self, event):
+        """EventBus handler for speech interruption"""
+        self.stop_speaking()
+
+    def _handle_state_change_event(self, event):
+        """EventBus handler for state transitions"""
+        new_state = getattr(event, "new_state", "")
+        if new_state == "INTERRUPTED":
+            self.stop_speaking()
     
     async def speak(self, text: str, language: Optional[str] = None) -> bool:
         """Generate and play speech using Piper"""
@@ -199,7 +218,8 @@ class PiperTTSProvider(BaseTTSProvider):
                 cmd.insert(1, '-q')  # Quiet mode for aplay
                 
             self.logger.debug(f"🔊 Playing with {player}...")
-            process = subprocess.Popen(cmd)
+            self.current_process = subprocess.Popen(cmd)
+            process = self.current_process
             
             # Start Lip Sync Loop
             start_time = time.time()
@@ -214,8 +234,8 @@ class PiperTTSProvider(BaseTTSProvider):
                 chunk_ms = 50
                 chunk_size = int(framerate * chunk_ms / 1000)
                 
-                # Loop while process is running
-                while process.poll() is None:
+                # Loop while process is running and self.is_speaking is True
+                while process.poll() is None and self.is_speaking:
                     # Calculate current position in frames
                     elapsed = time.time() - start_time
                     current_frame = int(elapsed * framerate)
@@ -230,7 +250,6 @@ class PiperTTSProvider(BaseTTSProvider):
                             rms = audioop.rms(data, sampwidth)
                             
                             # Normalize RMS to 0-100 range
-                            # Lower factor = more sensitive (opens wider for quieter sounds)
                             scaling_factor = 2000 
                             intensity = min(100, int((rms / scaling_factor) * 100))
                             
@@ -239,19 +258,23 @@ class PiperTTSProvider(BaseTTSProvider):
                     
                     await asyncio.sleep(0.05) 
             
-            # Ensure process finishes
-            process.wait()
+            # Ensure process finishes or is terminated
+            if process.poll() is None:
+                process.terminate()
+                process.wait()
             
             # Ensure jaw is closed at the end
             self.hardware.send_jaw_intensity(0)
+            self.current_process = None
             self.is_speaking = False
             self.logger.debug("✅ Audio playback & Lip Sync completed")
                 
         except Exception as e:
             self.is_speaking = False
             self.hardware.send_jaw_intensity(0)
+            self.current_process = None
             self.logger.error(f"❌ Audio playback error: {e}")
-    
+
     async def _check_cache_size(self):
         """Check cache size and cleanup if needed"""
         try:
@@ -283,16 +306,19 @@ class PiperTTSProvider(BaseTTSProvider):
             self.logger.error(f"❌ Cache cleanup error: {e}")
     
     def stop_speaking(self):
-        """Stop current speech"""
-        if self.is_speaking:
-            # We can't easily kill the subprocess from here without storing the reference
-            # Ideally we would store self.current_process and kill it
-            # For now, just setting flag. In a robust impl, track the Popen object.
+        """Stop current speech immediately"""
+        self.is_speaking = False
+        if self.current_process and self.current_process.poll() is None:
+            try:
+                self.current_process.terminate()
+            except Exception as e:
+                self.logger.debug(f"Process termination error: {e}")
+            self.current_process = None
+        
+        if hasattr(self, 'hardware') and self.hardware:
+            self.hardware.send_jaw_intensity(0)
             
-            # Since we didn't store the process in self, we rely on the command ending quickly.
-            # But the 'aplay' command is short-lived anyway.
-            self.is_speaking = False
-            self.logger.info("⏹️ Speech stop requested")
+        self.logger.info("⏹️ Speech stopped and jaw reset")
     
     def cleanup(self):
         """Cleanup resources"""

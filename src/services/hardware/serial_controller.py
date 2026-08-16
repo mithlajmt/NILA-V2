@@ -37,6 +37,23 @@ class SerialController:
         
         self.initialized = True
         self.connect()
+
+        # EventBus Integration
+        from src.core.event_bus import EventBus
+        self.event_bus = EventBus()
+        self.event_bus.subscribe("speech.amplitude", self._handle_hardware_event)
+        self.event_bus.subscribe("hardware.jaw", self._handle_hardware_event)
+        self.event_bus.subscribe("state.change", self._handle_state_change)
+
+    def _handle_hardware_event(self, event):
+        """EventBus handler for jaw amplitude updates"""
+        intensity = getattr(event, "intensity", 0)
+        self.send_jaw_intensity(intensity)
+
+    def _handle_state_change(self, event):
+        """EventBus handler for state transition updates"""
+        new_state = getattr(event, "new_state", "IDLE")
+        self.logger.debug(f"🔌 Hardware State Sync: {new_state}")
         
     def connect(self):
         """Establish serial connection"""

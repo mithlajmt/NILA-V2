@@ -6,6 +6,8 @@ from typing import Optional
 from src.services.tts.tts_service import TTSService
 from src.services.speech.speech_recognizer import SpeechRecognizer
 from src.services.llm.llm_service import LLMService
+from src.core.state import NilaState
+from src.core.runtime import NilaRuntime
 
 class RobotController:
     """Enhanced Robot Controller - Step 4: Speaking + Listening + AI + Multilingual TTS"""
@@ -44,13 +46,21 @@ class RobotController:
         # Initialize Feedback Service
         from src.services.feedback.feedback_service import FeedbackService
         self.feedback = FeedbackService(settings)
+
+        # Initialize Wake Word Detector
+        from src.services.speech.wake_word_detector import WakeWordDetector
+        self.wake_detector = WakeWordDetector(settings)
+
+        # Initialize NilaRuntime Manager
+        self.runtime = NilaRuntime(settings)
+        self.event_bus = self.runtime.event_bus
         
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
         
         mode = "AI Conversations" if self.llm_enabled else "Echo Mode"
         self.logger.info(f"🤖 Enhanced Robot Controller initialized - {mode}")
-    
+
     def _setup_signal_handlers(self):
         """Setup graceful shutdown on CTRL+C"""
         def signal_handler(signum, frame):
@@ -66,7 +76,11 @@ class RobotController:
         self.conversation_active = True
         self.stats['start_time'] = time.time()
         
-        self.logger.info("🚀 Robot starting Step 3...")
+        # Set active loop on EventBus
+        self.event_bus.set_event_loop(asyncio.get_running_loop())
+        self.runtime.start_new_session()
+        
+        self.logger.info("🚀 Robot starting Event-Driven Runtime Loop...")
         
         # Step 3: Speak greeting
         await self._speak_greeting()
@@ -78,6 +92,10 @@ class RobotController:
         while self.is_running and self.conversation_active:
             try:
                 self._print_status_header()
+                self.runtime.start_turn()
+                
+                # Transition to LISTENING state
+                self.runtime.transition_to(NilaState.LISTENING, reason="Awaiting user voice input")
                 
                 # Listen for voice input
                 user_input = await self.speech_recognizer.listen(timeout=30)
@@ -87,6 +105,14 @@ class RobotController:
                     self.stats['messages_received'] += 1
                     self.stats['successful_transcriptions'] += 1
                     
+                    # Publish STTTranscriptEvent
+                    from src.core.events import STTTranscriptEvent
+                    await self.event_bus.publish(STTTranscriptEvent(
+                        text=user_input,
+                        language=self.speech_recognizer.get_last_language(),
+                        confidence=1.0
+                    ))
+                    
                     # Display recorded message with analysis
                     self._display_message_info(user_input)
                     
@@ -95,12 +121,13 @@ class RobotController:
                         await self._handle_exit()
                         break
                     
-                    # Step 3: Get AI response and show it (no TTS yet)
+                    # Step 3: Get AI response and show it
                     await self._handle_conversation(user_input)
                     
                 else:
                     self.stats['failed_transcriptions'] += 1
                     consecutive_failures += 1
+                    self.runtime.transition_to(NilaState.IDLE, reason="No speech detected")
                     
                     if consecutive_failures >= max_consecutive_failures:
                         print(f"\n⚠️ {consecutive_failures} consecutive failures. Check microphone!")
@@ -131,22 +158,23 @@ class RobotController:
         
         try:
             print(f"\n🧠 Generating AI response...")
+            language = self.speech_recognizer.get_last_language()
             
-            # Get AI response (pass language if detected by Whisper)
-            # For now, we'll detect language from the speech recognizer context if available
-            language = None  # TODO: Get from speech recognizer if Whisper is used
-            
-            # Start thinking feedback
-            self.feedback.start_thinking()
+            # Publish thinking start event (FeedbackService automatically handles audio loop)
+            from src.core.events import BrainThinkingEvent, BrainLLMResponseEvent, TTSPlaybackEvent
+            await self.event_bus.publish(BrainThinkingEvent(is_thinking=True))
             
             try:
                 ai_response = await self.llm_service.get_response(user_input, language)
             finally:
-                # Stop thinking feedback regardless of success/failure
-                self.feedback.stop_thinking()
+                # Publish thinking stop event
+                await self.event_bus.publish(BrainThinkingEvent(is_thinking=False))
             
             if ai_response:
                 self.stats['llm_responses'] += 1
+                
+                # Publish LLM response event
+                await self.event_bus.publish(BrainLLMResponseEvent(text=ai_response))
                 
                 # Display AI response
                 print("\n" + "="*60)
@@ -157,7 +185,9 @@ class RobotController:
                 
                 # Speak the AI response!
                 print("\n🔊 Speaking response...")
+                await self.event_bus.publish(TTSPlaybackEvent(status="started"))
                 await self.text_to_speech.speak(ai_response)
+                await self.event_bus.publish(TTSPlaybackEvent(status="finished"))
                 
             else:
                 self.stats['llm_failures'] += 1

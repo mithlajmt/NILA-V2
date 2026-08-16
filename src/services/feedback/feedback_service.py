@@ -30,6 +30,19 @@ class FeedbackService:
         # Assets
         self.assets_dir = Path("data/audio/sfx")
         self.thinking_sound = self.assets_dir / "thinking.wav"
+
+        # EventBus Integration
+        from src.core.event_bus import EventBus
+        self.event_bus = EventBus()
+        self.event_bus.subscribe("brain.thinking", self._handle_thinking_event)
+
+    def _handle_thinking_event(self, event):
+        """EventBus handler for brain thinking state"""
+        is_thinking = getattr(event, "is_thinking", False)
+        if is_thinking:
+            self.start_thinking()
+        else:
+            self.stop_thinking()
         
     def start_thinking(self):
         """Start the 'thinking' feedback loop"""

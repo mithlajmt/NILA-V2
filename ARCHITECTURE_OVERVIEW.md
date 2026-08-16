@@ -1,747 +1,376 @@
-# 🏗️ NILA-V2 Voice AI Bot - Complete Architecture Overview
+# 🏗️ NILA-V2 Humanoid AI Robot — Complete Architecture Overview
+
+Welcome to the **NILA V2** software architecture documentation. This document provides a complete, developer-friendly explanation of how NILA's software brain works, how data flows through the system, and how to independently develop or extend any part of the codebase.
+
+---
 
 ## 📋 Table of Contents
-1. [System Overview](#system-overview)
-2. [Architecture Diagram](#architecture-diagram)
-3. [Core Components](#core-components)
-4. [Data Flow](#data-flow)
-5. [Service Architecture](#service-architecture)
-6. [Configuration System](#configuration-system)
-7. [Technology Stack](#technology-stack)
-8. [Design Patterns](#design-patterns)
-9. [Scalability Features](#scalability-features)
+1. [System Overview](#-system-overview)
+2. [Event-Driven Architecture & Sequence Diagram](#-event-driven-architecture--sequence-diagram)
+3. [Core Architectural Layers](#-core-architectural-layers)
+4. [Step-by-Step Execution & Conversation Flow](#-step-by-step-execution--conversation-flow)
+5. [Complete Repository File Map](#-complete-repository-file-map)
+6. [Developer Onboarding: How to Work on Specific Components](#-developer-onboarding-how-to-work-on-specific-components)
+   - [How to Add a New STT Provider](#1-how-to-add-a-new-stt-provider)
+   - [How to Add a New TTS Provider](#2-how-to-add-a-new-tts-provider)
+   - [How to Add a New LLM / AI Brain Provider](#3-how-to-add-a-new-llm--ai-brain-provider)
+   - [How to Subscribe to the EventBus for New Capabilities](#4-how-to-subscribe-to-the-eventbus-for-new-capabilities)
+   - [How to Extend Arduino Hardware Control](#5-how-to-extend-arduino-hardware-control)
+7. [Configuration System (`.env`)](#-configuration-system-env)
+8. [Testing & Verification Suite](#-testing--verification-suite)
 
 ---
 
 ## 🎯 System Overview
 
-**NILA-V2** is a professional, scalable voice AI bot designed for robot applications, specifically built for exhibition/robot assistant scenarios. It supports:
+**NILA-V2** is a production-oriented humanoid/interactive AI robot developed by **Robuverse**. While physical hardware (servos, motors, power systems) is managed via Arduino microcontrollers, this repository implements **NILA's AI Brain & Software Architecture**:
 
-- ✅ **Multilingual Speech Recognition** (English + Malayalam)
-- ✅ **Intelligent AI Conversations** (OpenAI GPT integration)
-- ✅ **Text-to-Speech** (Multiple providers with caching)
-- ✅ **Voice Activity Detection** (VAD for efficient listening)
-- ✅ **Provider Abstraction** (Easy switching between services)
-- ✅ **Comprehensive Logging & Statistics**
-
-### Key Features
-- **Modular Architecture**: Easy to extend and maintain
-- **Provider Pattern**: Switch between different AI/TTS/STT providers via config
-- **Async/Await**: Non-blocking I/O for responsive performance
-- **Caching**: Audio caching for faster responses
-- **Error Handling**: Graceful fallbacks and error recovery
-- **Statistics Tracking**: Monitor usage, costs, and performance
+- 🎙️ **Speech-to-Text (STT)**: Multi-provider engine supporting **Deepgram (Cloud Nova-2)**, **Faster-Whisper (Local INT8 ONNX)**, and **Google Speech API** with automatic language detection.
+- 🧠 **AI Reasoning (LLM)**: Provider gateway supporting **OpenRouter (Gemini 2.5 Flash, Llama 3.1)**, **OpenAI (GPT-4o, GPT-3.5)**, and extensible custom LLM drivers.
+- 🔊 **Text-to-Speech (TTS)**: Multilingual synthesis supporting **Piper Neural TTS (Local ONNX)**, **ElevenLabs (Ultra-realistic voice)**, **Google Cloud TTS**, and **gTTS**.
+- 👄 **Real-Time Hardware Lip-Sync**: Real-time WAV amplitude analysis (RMS) driving jaw movement via USB Serial to Arduino at 50ms intervals.
+- ⚡ **Asynchronous Event Bus**: Decoupled Pub/Sub event architecture (`src/core/event_bus.py`) isolating STT, LLM, TTS, audio SFX, and hardware workers.
+- 🌐 **Multilingual Interaction**: Bilingual Malayalam (Native Unicode) + English code-switching and accent handling.
 
 ---
 
-## 🏛️ Architecture Diagram
+## 🏛️ Event-Driven Architecture & Sequence Diagram
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        main.py                              │
-│                   (Application Entry Point)                 │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│              RobotController (Core Orchestrator)            │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │  TTSService  │  │SpeechRecognizer│  │  LLMService │     │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
-│         │                  │                  │              │
-└─────────┼──────────────────┼──────────────────┼─────────────┘
-          │                  │                  │
-          ▼                  ▼                  ▼
-    ┌─────────┐      ┌──────────────┐   ┌─────────────┐
-    │ TTS     │      │ STT          │   │ LLM         │
-    │ Factory │      │ Factory      │   │ Factory     │
-    └────┬────┘      └──────┬───────┘   └──────┬──────┘
-         │                  │                  │
-    ┌────┴────┐      ┌──────┴───────┐   ┌──────┴──────┐
-    │         │      │               │   │             │
-    ▼         ▼      ▼               ▼   ▼             ▼
-┌────────┐ ┌────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-│  gTTS  │ │Google  │ │  Google  │ │ Whisper  │ │  OpenAI  │
-│Provider│ │Cloud   │ │  STT     │ │  STT     │ │ Provider │
-│        │ │TTS     │ │ Provider │ │ Provider │ │          │
-└────────┘ └────────┘ └──────────┘ └──────────┘ └──────────┘
-```
+NILA V2 uses an in-process **Asynchronous Event Bus** (`EventBus`). Rather than making blocking procedural calls, components emit strongly-typed `Event` objects (`src/core/events.py`) to topics. Other components subscribe to those topics independently.
 
----
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Human as User / Environment
+    participant Mic as Mic & AudioCapture
+    participant STT as SpeechRecognizer & Provider
+    participant Bus as EventBus (Pub/Sub Engine)
+    participant Ctrl as RobotController
+    participant SFX as FeedbackService
+    participant LLM as LLMService & Provider
+    participant TTS as TTSService & Provider
+    participant Serial as SerialController
+    participant Arduino as Arduino Jaw Servo & Eyes
 
-## 🔧 Core Components
-
-### 1. **main.py** - Application Entry Point
-- Initializes logging
-- Loads configuration from `.env`
-- Creates `RobotController`
-- Handles graceful shutdown (Ctrl+C)
-- Manages async event loop
-
-**Key Responsibilities:**
-- Bootstrap the application
-- Error handling at top level
-- Cleanup on exit
-
-### 2. **RobotController** (`src/core/robot_controller.py`)
-The central orchestrator that coordinates all services.
-
-**Responsibilities:**
-- Manages conversation loop
-- Coordinates STT → LLM → TTS flow
-- Tracks statistics (messages, tokens, costs)
-- Handles exit commands ("exit", "quit", "goodbye")
-- Displays status information
-- Manages graceful shutdown
-
-**Key Methods:**
-- `start()`: Main async loop
-- `_handle_conversation()`: Process user input → AI response → TTS
-- `_speak_greeting()`: Initial robot greeting
-- `_print_final_stats()`: Display session statistics
-
-**State Management:**
-- `is_running`: Controls main loop
-- `conversation_active`: Controls conversation state
-- `stats`: Tracks metrics (messages, tokens, costs, uptime)
-
-### 3. **Settings** (`src/config/settings.py`)
-Centralized configuration using Pydantic Settings.
-
-**Configuration Categories:**
-- **Environment**: `ENVIRONMENT`, `DEBUG`
-- **API Keys**: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`
-- **Service Providers**: `SPEECH_PROVIDER`, `TTS_PROVIDER`, `LLM_PROVIDER`
-- **Whisper Settings**: Model, language, device (CPU/GPU)
-- **LLM Settings**: Model, max tokens, temperature, history length, system prompt
-- **TTS Settings**: Voices (Malayalam/English), speaking rate, pitch, volume
-- **Logging**: Log level, log file path
-
-**Features:**
-- Environment variable support (`.env` file)
-- Type validation via Pydantic
-- Sensible defaults
-- Case-sensitive configuration
-
----
-
-## 🔄 Data Flow
-
-### Complete Conversation Flow
-
-```
-1. START
-   │
-   ├─► RobotController.start()
-   │   │
-   │   ├─► _speak_greeting()
-   │   │   └─► TTSService.speak("Hello! I am your AI robot...")
-   │   │       └─► Provider generates audio → plays via pygame
-   │   │
-   │   └─► Main Conversation Loop:
-   │       │
-   │       ├─► SpeechRecognizer.listen(timeout=30)
-   │       │   │
-   │       │   ├─► Calibrate microphone (if needed)
-   │       │   │
-   │       │   ├─► _capture_blocking()
-   │       │   │   └─► speech_recognition.listen() (waits for speech)
-   │       │   │
-   │       │   └─► Provider.transcribe(audio)
-   │       │       ├─► GoogleSTTProvider: recognize_google()
-   │       │       └─► WhisperSTTProvider: model.transcribe() (if implemented)
-   │       │
-   │       ├─► User Input Received: "Hello robot, what can you do?"
-   │       │
-   │       ├─► _handle_conversation(user_input)
-   │       │   │
-   │       │   ├─► LLMService.get_response(user_input)
-   │       │   │   │
-   │       │   │   ├─► OpenAIProvider.get_response()
-   │       │   │   │   │
-   │       │   │   │   ├─► Build messages (system prompt + history)
-   │       │   │   │   │
-   │       │   │   │   ├─► Call OpenAI API (async)
-   │       │   │   │   │
-   │       │   │   │   ├─► Extract response text
-   │       │   │   │   │
-   │       │   │   │   └─► Update conversation history
-   │       │   │   │
-   │       │   │   └─► Return: "Hi! I'm an AI-powered robot..."
-   │       │   │
-   │       │   ├─► Display AI response (console)
-   │       │   │
-   │       │   └─► TTSService.speak(ai_response)
-   │       │       │
-   │       │       ├─► Detect language (auto-detect or use hint)
-   │       │       │
-   │       │       ├─► Check cache (MD5 hash of text+language)
-   │       │       │   └─► If cached: use existing audio file
-   │       │       │
-   │       │       ├─► Generate audio (if not cached)
-   │       │       │   ├─► gTTS Provider: gTTS(text, lang).save()
-   │       │       │   └─► Google Cloud TTS: synthesize_speech()
-   │       │       │
-   │       │       └─► Play audio via pygame.mixer
-   │       │
-   │       └─► Loop continues (listen → transcribe → AI → TTS)
-   │
-   └─► Exit Command Detected ("exit", "quit", "goodbye")
-       │
-       ├─► _handle_exit()
-       │   ├─► Speak goodbye message
-       │   └─► Set conversation_active = False
-       │
-       └─► cleanup()
-           ├─► TTSService.cleanup()
-           ├─► SpeechRecognizer.cleanup()
-           └─► LLMService.cleanup()
-```
-
-### Error Handling Flow
-
-```
-Error Occurs
-    │
-    ├─► Try/Except in each service
-    │
-    ├─► Log error with context
-    │
-    ├─► Fallback Strategy:
-    │   ├─► STT Error → Return None, retry next cycle
-    │   ├─► LLM Error → Use fallback response
-    │   └─► TTS Error → Log, continue (no audio)
-    │
-    └─► Update statistics (error counters)
+    Human->>Mic: Speaks audio ("Hello Nila!")
+    Mic->>Mic: WebRTC VAD & Noise Calibration
+    Mic->>STT: Raw PCM Audio Bytes
+    STT->>STT: Transcribes audio (Deepgram / Whisper)
+    STT->>Bus: Publish STTTranscriptEvent ("stt.transcript")
+    Bus->>Ctrl: Notify STTTranscriptEvent
+    
+    Ctrl->>Bus: Publish BrainThinkingEvent(is_thinking=True)
+    Bus->>SFX: Notify BrainThinkingEvent -> Starts ambient audio loop
+    
+    Ctrl->>LLM: get_response(user_input, language)
+    LLM->>LLM: Query API (OpenRouter / OpenAI)
+    LLM-->>Ctrl: Return AI text response
+    
+    Ctrl->>Bus: Publish BrainThinkingEvent(is_thinking=False)
+    Bus->>SFX: Notify BrainThinkingEvent -> Stops ambient audio loop
+    
+    Ctrl->>Bus: Publish BrainLLMResponseEvent ("brain.response")
+    Ctrl->>TTS: speak(ai_response)
+    
+    TTS->>TTS: Synthesize Audio (Piper / ElevenLabs)
+    TTS->>Bus: Publish TTSPlaybackEvent ("tts.playback", status="started")
+    
+    par Playback & Lip-Sync Loop
+        TTS->>Human: Play Audio (Speaker / Bluetooth)
+        loop Every 50ms frame
+            TTS->>Bus: Publish SpeechAmplitudeEvent ("speech.amplitude", intensity 0-100)
+            Bus->>Serial: Notify SpeechAmplitudeEvent
+            Serial->>Arduino: Send USB Serial string ("intensity\n")
+            Arduino->>Arduino: Update Jaw Servo (50° - 110°)
+        end
+    end
+    
+    TTS->>Bus: Publish TTSPlaybackEvent ("tts.playback", status="finished")
 ```
 
 ---
 
-## 🏗️ Service Architecture
+## 🔧 Core Architectural Layers
 
-### 1. **Speech Recognition Service** (`src/services/speech/`)
-
-#### **SpeechRecognizer** (Main Service)
-- **Purpose**: High-level speech recognition with VAD and provider abstraction
-- **Features**:
-  - Voice Activity Detection (WebRTC VAD)
-  - Microphone calibration (ambient noise adjustment)
-  - Auto-recalibration (every 5 minutes)
-  - Provider abstraction (Google/Whisper)
-
-**Key Components:**
-- `speech_recognition.Recognizer`: Core SR library
-- `webrtcvad.Vad`: Voice activity detection
-- `BaseSTTProvider`: Provider interface
-
-**Methods:**
-- `listen(timeout)`: Async method to capture and transcribe speech
-- `_capture_blocking()`: Synchronous audio capture
-- `_calibrate_microphone()`: Adjust for ambient noise
-- `_should_recalibrate()`: Check if recalibration needed
-
-#### **STT Providers** (`src/services/speech/providers/`)
-
-**BaseSTTProvider** (Protocol/Interface):
-```python
-async def transcribe(audio, language) -> STTResult
+```text
+NILA-V2
+│
+├── 1. Application Layer (`main.py`, `src/core/robot_controller.py`)
+│      Orchestrates lifecycle, signal handling (Ctrl+C), uptime, and session metrics.
+│
+├── 2. Event Bus Engine (`src/core/event_bus.py`, `src/core/events.py`)
+│      Async Pub/Sub message broker supporting wildcard topic matching (e.g. "stt.*", "*")
+│      and error isolation across thread boundaries.
+│
+├── 3. Speech Recognition Engine (`src/services/speech/`)
+│      `AudioCapture`: PipeWire parecord/arecord process + WebRTC VAD.
+│      `SpeechRecognizer`: Factory instantiating Deepgram, Faster-Whisper, or Google STT.
+│
+├── 4. AI Brain Layer (`src/services/llm/`)
+│      `LLMService`: Factory instantiating OpenRouter, OpenAI, or custom LLM drivers.
+│      Maintains short-term memory history and Kerala personality prompt.
+│
+├── 5. Voice & Synthesis Engine (`src/services/tts/`)
+│      `TTSService`: Factory instantiating Piper ONNX, ElevenLabs, Google Cloud, or gTTS.
+│      `AudioPlayer`: RMS amplitude analysis triggering real-time lip-sync events.
+│
+├── 6. Hardware Control Layer (`src/services/hardware/serial_controller.py`)
+│      Singleton PySerial driver maintaining USB Serial link (`/dev/ttyUSB0` @ 115200) to Arduino.
+│
+└── 7. Arduino Firmware Layer (`arduino/robot_head/`)
+       `robot_head.ino`: Arduino sketch mapping 0–100 intensity to jaw servo angles (50°–110°).
 ```
-
-**STTResult** (Data Class):
-- `text`: Transcribed text (or None)
-- `language`: Detected language code
-- `confidence`: Confidence score (optional)
-- `error`: Error message (if failed)
-
-**GoogleSTTProvider**:
-- Uses `speech_recognition.recognize_google()`
-- Supports language hints (`en-IN`, `ml-IN`)
-- Async wrapper around sync API
-- Error handling for `UnknownValueError`, `RequestError`
-
-**WhisperSTTProvider** (Referenced but not implemented):
-- Would use OpenAI Whisper model
-- Supports offline processing
-- Better multilingual support
-- GPU acceleration support
-
-### 2. **Text-to-Speech Service** (`src/services/tts/`)
-
-#### **TTSService** (Factory)
-- **Purpose**: Provider factory and high-level TTS interface
-- **Features**:
-  - Provider selection based on config
-  - Fallback to gTTS if primary fails
-  - Provider switching at runtime
-
-**Methods:**
-- `speak(text, language)`: Main async method
-- `stop_speaking()`: Interrupt current speech
-- `switch_provider()`: Change provider dynamically
-- `is_speaking()`: Check playback state
-
-#### **TTS Providers**
-
-**BaseTTSProvider** (Abstract Base Class):
-```python
-async def speak(text, language) -> bool
-def stop_speaking()
-def cleanup()
-def get_provider_name() -> str
-def detect_language(text) -> str  # Heuristic-based
-```
-
-**GTTSProvider**:
-- Uses `gtts` library (free, online)
-- **Limitations**: English only, robotic voice
-- **Features**:
-  - Audio caching (MD5 hash-based)
-  - Cache size management (50MB max)
-  - Auto-cleanup (removes oldest 30% when 80% full)
-  - Pygame mixer for playback
-
-**GoogleCloudTTSProvider**:
-- Uses Google Cloud Text-to-Speech API
-- **Advantages**: Professional voices, multilingual (Malayalam + English)
-- **Features**:
-  - Voice selection (Malayalam: `ml-IN-Wavenet-A`, English: `en-IN-Wavenet-D`)
-  - Speaking rate, pitch, volume control
-  - Audio caching (100MB max)
-  - Requires `GOOGLE_APPLICATION_CREDENTIALS` (service account JSON)
-
-**Legacy TextToSpeech** (`src/services/speech/text_to_speech.py`):
-- Older implementation (appears unused)
-- Similar to GTTSProvider but less modular
-
-### 3. **LLM Service** (`src/services/llm/`)
-
-#### **LLMService** (Factory)
-- **Purpose**: Provider factory and high-level LLM interface
-- **Features**:
-  - Provider selection based on config
-  - Conversation history management
-  - Statistics tracking
-
-**Methods:**
-- `get_response(user_message, language)`: Main async method
-- `clear_history()`: Reset conversation
-- `get_history(limit)`: Retrieve conversation history
-- `get_stats()`: Usage statistics
-- `set_personality()`: Change system prompt
-
-#### **LLM Providers**
-
-**BaseLLMProvider** (Abstract Base Class):
-- Conversation history management
-- Statistics tracking (messages, tokens, errors)
-- History trimming (keeps last N messages)
-
-**OpenAIProvider**:
-- Uses `openai.AsyncOpenAI`
-- **Models Supported**: `gpt-3.5-turbo`, `gpt-4`, `gpt-4-turbo`
-- **Features**:
-  - System prompt for robot personality
-  - Conversation history (last 10 messages by default)
-  - Language hints (Malayalam detection)
-  - Token usage tracking
-  - Cost estimation (GPT-3.5: $0.002/1K tokens, GPT-4: $0.03/1K tokens)
-  - Fallback responses on API errors
-
-**AnthropicProvider** (Placeholder):
-- Not yet implemented
-- Would use Claude API
-- Same interface as OpenAIProvider
 
 ---
 
-## ⚙️ Configuration System
+## 🔄 Step-by-Step Execution & Conversation Flow
 
-### Configuration Hierarchy
+### Step 1: Bootstrap (`main.py`)
+1. `main.py` configures logging via `setup_logger()`.
+2. Loads configuration settings from `.env` via `Settings()`.
+3. Instantiates `RobotController(settings)` and invokes `asyncio.run(robot.start())`.
 
-1. **Environment Variables** (`.env` file) - Highest priority
-2. **Pydantic Settings Defaults** - Fallback values
+### Step 2: Listening & VAD (`src/services/speech/audio_capture.py`)
+1. `AudioCapture` spawns a Linux subprocess (`parecord` or `arecord`) capturing 16kHz 16-bit mono PCM.
+2. Calibrates ambient background noise over the initial 450ms (`15 chunks`).
+3. Evaluates frame energy against a dynamic threshold and filters speech using `webrtcvad.Vad(2)`.
+4. Stops recording upon detecting 1.5 seconds of trailing silence.
 
-### Key Configuration Files
+### Step 3: Transcription (`src/services/speech/speech_recognizer.py`)
+1. The PCM buffer is sent to the active STT provider:
+   - **Deepgram**: Wrapped in a WAV container and POSTed to Deepgram's `nova-2` endpoint.
+   - **Whisper**: Converted to float32 numpy array and processed locally via `faster_whisper.WhisperModel`.
+   - **Google**: Converted to `sr.AudioData` and sent to Google's speech recognition endpoint.
+2. An `STTTranscriptEvent` is published to topic `"stt.transcript"`.
 
-**`.env` File Structure:**
+### Step 4: AI Reasoning & Thinking SFX (`src/services/llm/llm_service.py`)
+1. `RobotController` receives the text and publishes `BrainThinkingEvent(is_thinking=True)` to `"brain.thinking"`.
+2. `FeedbackService` receives `BrainThinkingEvent` and starts a background audio loop playing thinking sounds from `data/audio/sfx/thinking/`.
+3. `LLMService` formats system instructions (Kerala persona, 1–2 sentence max, no emojis, native Malayalam Unicode support), appends conversation history, and calls the active LLM provider (OpenRouter / OpenAI).
+4. Upon completion, `RobotController` publishes `BrainThinkingEvent(is_thinking=False)` (stopping feedback audio) and `BrainLLMResponseEvent` to `"brain.response"`.
+
+### Step 5: Synthesis & Lip-Sync (`src/services/tts/piper_provider.py`)
+1. `TTSService.speak(ai_response)` sends text to the active TTS provider.
+2. If **Piper**:
+   - Checks audio cache in `data/audio/piper/`.
+   - If uncached, executes `tools/piper/piper` binary with ONNX model `data/models/piper/ml_IN-arjun-medium.onnx`.
+   - Plays audio using system player (`pw-play` / `paplay` / `aplay`).
+   - Simultaneously reads WAV frames via Python `wave` + `audioop.rms`, calculates 0–100 amplitude intensity every 50ms, and publishes `SpeechAmplitudeEvent` to `"speech.amplitude"`.
+3. `SerialController` receives `SpeechAmplitudeEvent` and sends ASCII command `"intensity\n"` to `/dev/ttyUSB0`.
+4. Arduino receives the command, maps `0-100` to servo angle `50°-110°`, and updates the robot's jaw servo.
+
+---
+
+## 📁 Complete Repository File Map
+
+```text
+NILA-V2/
+├── .env                              # Active environment variables (API keys, ports, models)
+├── .env.template                     # Template for environment configuration
+├── ARCHITECTURE_OVERVIEW.md          # [THIS FILE] System architecture documentation
+├── DEEPGRAM_SETUP.md                 # Setup guide for Deepgram STT
+├── LLM_INTEGRATION_SUMMARY.md        # Summary of LLM provider integration
+├── LLM_SETUP_GUIDE.md                # Guide for OpenRouter & OpenAI configuration
+├── PI_AUDIO_FIX.md                   # PipeWire / ALSA audio troubleshooting guide
+├── RASPBERRY_PI_AUDIO_SETUP.md       # Audio configuration guide for Raspberry Pi 4/5
+├── README.md                         # Quickstart repository overview
+├── TTS_VOICE_GUIDE.md                # Voice tuning guide for Piper, Google Cloud, ElevenLabs
+├── main.py                           # Main application entry point
+├── realtime_robot.py                 # Standalone experimental script for OpenAI Realtime WebSocket API
+├── requirements.txt                  # Python dependencies
+├── setup.sh                          # Automated installation bash script
+│
+├── arduino/                          # Microcontroller Firmware
+│   └── robot_head/
+│       ├── robot_head.ino            # Production Arduino sketch: 1 Jaw Servo (Pin 7) + Eye LED (Pin A1)
+│       └── robot.ino                 # Experimental sketch: 8 Servo body motion state machine
+│
+├── data/                             # Runtime Assets & Storage
+│   ├── audio/                        # Cached generated speech audio files
+│   │   ├── elevenlabs/               # ElevenLabs TTS cache (.mp3)
+│   │   ├── gtts/                     # gTTS cache (.mp3)
+│   │   ├── piper/                    # Piper TTS cache (.wav)
+│   │   └── sfx/thinking/             # Ambient audio clips played during LLM thinking phase
+│   ├── logs/
+│   │   └── robot.log                 # System log file
+│   └── models/
+│       ├── piper/                    # Piper ONNX neural voice models (ml_IN-arjun, ml_IN-meera, etc.)
+│       └── vosk/                     # Offline Vosk STT model
+│
+├── extra/                            # External Auxiliary Microservices
+│   └── tts_server/                   # Standalone FastAPI server for Indic-Parler-TTS
+│       ├── requirements.txt
+│       ├── run.sh
+│       └── server.py
+│
+├── scripts/                          # Diagnostic & Setup Scripts
+│   ├── find_arduino.py               # Scans USB serial ports for connected Arduino
+│   ├── fix_pi_audio.sh               # Restarts PipeWire audio daemons on Linux/Pi
+│   ├── list_audio_devices.py         # Lists ALSA/PipeWire audio input & output nodes
+│   ├── setup_pi.sh                   # Installs Linux OS dependencies
+│   ├── setup_piper.py                # Downloads Piper executable binary & ONNX voice models
+│   ├── test_audio_capture.py         # Diagnostic script testing microphone capture & VAD
+│   ├── test_decoupled.py             # Integration test verifying decoupled TTS pipeline
+│   ├── test_hardware.py              # Interactive script testing Arduino jaw movements
+│   └── test_vad.py                   # Diagnostic script testing WebRTC VAD
+│
+├── src/                              # Core Source Code
+│   ├── config/
+│   │   └── settings.py               # Centralized configuration class (Pydantic BaseSettings)
+│   ├── core/
+│   │   ├── event_bus.py              # Asynchronous Pub/Sub EventBus engine
+│   │   ├── events.py                 # Strongly-typed system Event data classes
+│   │   └── robot_controller.py       # Main orchestrator & lifecycle manager
+│   ├── services/
+│   │   ├── base_worker.py            # Base worker class for event subscribers
+│   │   ├── audio/
+│   │   │   └── audio_player.py       # Pygame audio player with RMS amplitude analysis
+│   │   ├── feedback/
+│   │   │   └── feedback_service.py   # Manages ambient thinking audio SFX loop
+│   │   ├── hardware/
+│   │   │   └── serial_controller.py  # PySerial singleton communicating with Arduino
+│   │   ├── llm/
+│   │   │   ├── base_provider.py      # Abstract base class for LLM drivers & memory history
+│   │   │   ├── llm_service.py        # LLM Factory (OpenAI, OpenRouter, Anthropic)
+│   │   │   ├── openai_provider.py    # Driver for OpenAI API
+│   │   │   ├── openrouter_provider.py# Driver for OpenRouter API
+│   │   │   └── anthropic_provider.py # Stub driver for Anthropic Claude
+│   │   ├── speech/
+│   │   │   ├── audio_capture.py      # Subprocess audio recorder using parecord/arecord + VAD
+│   │   │   ├── base_stt_provider.py  # Protocol interface & STTResult data class
+│   │   │   ├── speech_recognizer.py  # High-level STT manager
+│   │   │   └── providers/
+│   │   │       ├── deepgram_stt_provider.py # Driver for Deepgram Nova-2 API
+│   │   │       ├── google_stt_provider.py   # Driver for Google Free STT
+│   │   │       └── whisper_stt_provider.py  # Driver for Faster-Whisper local INT8
+│   │   └── tts/
+│   │       ├── base_tts_provider.py         # Abstract base class for TTS drivers
+│   │       ├── tts_service.py               # TTS Factory
+│   │       ├── piper_provider.py            # Driver for local Piper TTS + Jaw lip-sync
+│   │       ├── elevenlabs_tts_provider.py   # Driver for ElevenLabs API
+│   │       ├── google_cloud_tts_provider.py # Driver for Google Cloud TTS API
+│   │       ├── gtts_provider.py             # Driver for gTTS free API
+│   │       └── ai4bharat_provider.py        # Driver for remote Indic-Parler-TTS server
+│   └── utils/
+│       ├── alsa_error_handler.py     # Ctypes context manager suppressing C-level ALSA errors
+│       └── logger.py                 # Logging setup with UTF-8 support
+│
+├── tests/                            # Automated Unit & Integration Tests
+│   ├── manual_stt_check.py           # Quick manual test for STT audio capture
+│   ├── test_event_bus.py             # Unit test suite for EventBus Pub/Sub engine
+│   └── test_openrouter.py            # Integration test for OpenRouter LLM service
+└── tools/                            # Compiled Third-Party Binaries
+    └── piper/                        # Local Piper TTS binary & espeak-ng data
+```
+
+---
+
+## 🛠️ Developer Onboarding: How to Work on Specific Components
+
+To work independently on a specific feature without breaking the rest of NILA, follow these guidebooks:
+
+### 1. How to Add a New STT Provider
+1. Create a new file in `src/services/speech/providers/` (e.g. `my_custom_stt_provider.py`).
+2. Inherit from `BaseSTTProvider` (`src/services/speech/base_stt_provider.py`) and implement `async def transcribe(self, audio_bytes: bytes, language: Optional[str] = None) -> STTResult`.
+3. In `src/services/speech/speech_recognizer.py`, update `_init_provider()` to check `self.settings.SPEECH_PROVIDER == "my_custom"` and instantiate your provider.
+4. Add any required settings to `src/config/settings.py` and `.env.template`.
+
+### 2. How to Add a New TTS Provider
+1. Create a new file in `src/services/tts/` (e.g. `azure_tts_provider.py`).
+2. Inherit from `BaseTTSProvider` (`src/services/tts/base_tts_provider.py`) and implement `async def speak(self, text: str, language: Optional[str] = None) -> bool`, `stop_speaking()`, `cleanup()`, and `get_provider_name()`.
+3. In `src/services/tts/tts_service.py`, update `_initialize_provider()` to instantiate your new provider when `TTS_PROVIDER == "azure"`.
+4. To enable jaw lip-sync with your provider, emit `SpeechAmplitudeEvent(intensity=val)` to topic `"speech.amplitude"` during audio playback.
+
+### 3. How to Add a New LLM / AI Brain Provider
+1. Create a new file in `src/services/llm/` (e.g. `gemini_provider.py`).
+2. Inherit from `BaseLLMProvider` (`src/services/llm/base_provider.py`) and implement `async def get_response(self, user_message: str, language: Optional[str] = None) -> Optional[str]`.
+3. Call `self.add_to_history("user", user_message)` and `self.add_to_history("assistant", response)` to preserve conversation memory.
+4. In `src/services/llm/llm_service.py`, update `_create_provider()` to return your provider when `LLM_PROVIDER == "gemini"`.
+
+### 4. How to Subscribe to the EventBus for New Capabilities
+If you want to add a new capability (e.g., Wake Word detection, Vision camera triggers, or Email Workflows):
+1. Import `EventBus` and `Event` in your service:
+   ```python
+   from src.core.event_bus import EventBus
+   from src.core.events import Event
+
+   bus = EventBus()
+   ```
+2. Subscribe to existing topics (e.g., `"stt.transcript"`, `"brain.response"`, `"system.state"`, or wildcards like `"stt.*"`):
+   ```python
+   def my_custom_handler(event: Event):
+       print(f"Received event on topic {event.topic}: {event.payload}")
+
+   bus.subscribe("stt.transcript", my_custom_handler)
+   ```
+3. To publish custom events from your service:
+   ```python
+   await bus.publish(Event(topic="my_feature.custom_event", payload={"data": 123}))
+   ```
+
+### 5. How to Extend Arduino Hardware Control
+1. To add new motor or servo commands (e.g. arm waves, head tilts):
+   - Update `arduino/robot_head/robot_head.ino` to parse new command strings from Serial (e.g., `"ARM_WAVE\n"` or `"INTENSITY,ANGLE\n"`).
+2. In `src/core/events.py`, add a new event class (e.g. `HardwareGestureCommandEvent`).
+3. In `src/services/hardware/serial_controller.py`, subscribe to `"hardware.gesture"` and write the corresponding ASCII string to `self.serial_conn.write()`.
+
+---
+
+## ⚙️ Configuration System (`.env`)
+
+NILA V2 uses Pydantic Settings (`src/config/settings.py`) to parse environment variables from `.env`.
+
+Key parameters in `.env`:
+
 ```env
-# Environment
+# ENVIRONMENT
 ENVIRONMENT=development
 DEBUG=True
 
-# API Keys
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=...
-GOOGLE_API_KEY=...
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# PROVIDERS SELECTION
+LLM_PROVIDER=openrouter           # openrouter | openai | anthropic
+SPEECH_PROVIDER=deepgram          # deepgram | whisper | google
+TTS_PROVIDER=piper                # piper | elevenlabs | google_cloud | gtts
 
-# Service Providers
-SPEECH_PROVIDER=google          # google | whisper
-TTS_PROVIDER=gtts               # gtts | google_cloud | azure
-LLM_PROVIDER=openai             # openai | anthropic | google
+# API KEYS
+OPENROUTER_API_KEY=your_key_here
+OPENROUTER_MODEL=google/gemini-2.5-flash
+DEEPGRAM_API_KEY=your_key_here
+ELEVENLABS_API_KEY=your_key_here
+ELEVENLABS_VOICE_ID=j36Me84eUGSrrHkIwAZQ
 
-# Whisper Settings
-WHISPER_MODEL=base              # tiny | base | small | medium | large
-WHISPER_LANGUAGE=en             # en | ml | auto
-WHISPER_DEVICE=cpu              # cpu | cuda
-
-# LLM Settings
-LLM_MODEL=gpt-3.5-turbo
-LLM_MAX_TOKENS=150
-LLM_TEMPERATURE=0.7
-LLM_MAX_HISTORY=10
-LLM_SYSTEM_PROMPT=You are a helpful robot...
-
-# TTS Settings
-TTS_VOICE_MALAYALAM=ml-IN-Wavenet-A
-TTS_VOICE_ENGLISH=en-IN-Wavenet-D
-TTS_SPEAKING_RATE=1.0
-TTS_PITCH=0.0
-TTS_VOLUME_GAIN_DB=0.0
-TTS_LANGUAGE=auto               # en | ml | auto
-STT_LANGUAGE=en-IN
-
-# Logging
-LOG_LEVEL=INFO
-LOG_FILE=data/logs/robot.log
-```
-
-### Configuration Loading
-
-```python
-# In main.py or any service
-from src.config.settings import Settings
-
-settings = Settings()  # Automatically loads from .env
-# Access: settings.OPENAI_API_KEY, settings.LLM_MODEL, etc.
+# HARDWARE SERIAL
+SERIAL_PORT=/dev/ttyUSB0
+SERIAL_BAUD=115200
 ```
 
 ---
 
-## 🛠️ Technology Stack
+## 🧪 Testing & Verification Suite
 
-### Core Dependencies
+Run automated unit and integration tests to verify system health:
 
-**Speech Recognition:**
-- `SpeechRecognition` (3.10.0): Core SR library
-- `pyaudio` (0.2.14): Microphone access
-- `webrtcvad` (2.0.10): Voice activity detection
+```bash
+# Activate virtual environment
+source venv/bin/activate
 
-**Text-to-Speech:**
-- `gtts` (2.4.0): Free TTS (fallback)
-- `google-cloud-texttospeech` (2.14.1): Professional TTS
-- `pygame` (2.5.2): Audio playback
-- `pydub` (0.25.1): Audio processing
+# 1. Run EventBus Unit Tests
+python3 -m unittest tests/test_event_bus.py
 
-**LLM:**
-- `openai` (1.12.0): OpenAI API client
-- `anthropic` (0.8.0): Claude API client (future)
+# 2. Run Decoupled TTS Pipeline Test
+python3 scripts/test_decoupled.py
 
-**Configuration:**
-- `pydantic` (2.4.2): Settings validation
-- `pydantic-settings` (2.1.0): Environment variable support
-- `python-dotenv` (1.0.0): `.env` file loading
+# 3. Test USB Serial Arduino Hardware Connection
+python3 scripts/test_hardware.py --port /dev/ttyUSB0
 
-**Utilities:**
-- `numpy` (1.26.4): Numerical operations (for Whisper)
+# 4. Scan for connected Arduino USB ports
+python3 scripts/find_arduino.py
 
-### Future Dependencies (Referenced)
-- `google-cloud-speech` (2.27.0): Google Cloud STT
-- `google-generativeai` (0.3.0): Gemini LLM
-- `whisper` (OpenAI): Offline STT (not in requirements yet)
-
----
-
-## 🎨 Design Patterns
-
-### 1. **Factory Pattern**
-- **TTSService**: Creates TTS providers based on config
-- **LLMService**: Creates LLM providers based on config
-- **SpeechRecognizer**: Creates STT providers based on config
-
-**Benefits:**
-- Easy provider switching (change config, no code changes)
-- Consistent interface across providers
-- Easy to add new providers
-
-### 2. **Strategy Pattern**
-- Each provider (TTS/STT/LLM) implements the same interface
-- Runtime selection based on configuration
-- Interchangeable implementations
-
-### 3. **Provider Pattern**
-- Abstract base classes define contracts
-- Concrete implementations for each service
-- Protocol-based interfaces (Python typing)
-
-### 4. **Singleton Pattern** (Implicit)
-- Settings instance loaded once
-- Services initialized once per RobotController
-
-### 5. **Observer Pattern** (Statistics)
-- Services track their own statistics
-- RobotController aggregates statistics
-- Displayed at end of session
-
----
-
-## 📈 Scalability Features
-
-### 1. **Async/Await Architecture**
-- Non-blocking I/O for API calls
-- Concurrent operations (listen while processing)
-- Responsive user experience
-
-### 2. **Caching System**
-- **Audio Caching**: TTS audio files cached (MD5 hash)
-- **Cache Management**: Auto-cleanup when size threshold reached
-- **Performance**: Instant playback for repeated phrases
-
-### 3. **Provider Abstraction**
-- Easy to swap providers (Google → Whisper, gTTS → Google Cloud)
-- No code changes needed (config-only)
-- Future-proof (add new providers easily)
-
-### 4. **Error Handling & Fallbacks**
-- Graceful degradation (fallback to gTTS if Google Cloud fails)
-- Error recovery (retry on next cycle)
-- Fallback responses (LLM errors → friendly messages)
-
-### 5. **Resource Management**
-- Automatic cleanup (microphone, audio, API clients)
-- Memory management (history trimming, cache cleanup)
-- Graceful shutdown (signal handlers)
-
-### 6. **Statistics & Monitoring**
-- Real-time metrics (messages, tokens, costs)
-- Performance tracking (uptime, success rate)
-- Cost estimation (API usage tracking)
-
-### 7. **Configuration-Driven**
-- All behavior controlled via `.env`
-- No hardcoded values
-- Environment-specific configs (dev/prod)
-
-### 8. **Modular Architecture**
-- Clear separation of concerns
-- Independent services (can test/develop separately)
-- Easy to extend (add new providers, features)
-
----
-
-## 🔍 Key Design Decisions
-
-### 1. **Why Provider Pattern?**
-- **Flexibility**: Switch providers without code changes
-- **Testing**: Easy to mock providers
-- **Future-proof**: Add new providers easily
-
-### 2. **Why Async/Await?**
-- **Performance**: Non-blocking I/O (API calls, audio generation)
-- **Responsiveness**: Can listen while processing
-- **Scalability**: Handle multiple operations concurrently
-
-### 3. **Why Caching?**
-- **Performance**: Instant playback for repeated phrases
-- **Cost**: Reduce API calls (TTS generation)
-- **User Experience**: Faster responses
-
-### 4. **Why Pydantic Settings?**
-- **Type Safety**: Automatic validation
-- **Environment Variables**: Easy `.env` support
-- **Documentation**: Self-documenting config
-
-### 5. **Why Statistics Tracking?**
-- **Monitoring**: Track usage, costs, performance
-- **Debugging**: Identify issues (error rates, slow responses)
-- **Optimization**: Data-driven improvements
-
----
-
-## 📁 File Structure
-
-```
-NILA-V2/
-├── main.py                          # Entry point
-├── requirements.txt                 # Dependencies
-├── .env                            # Configuration (not in repo)
-│
-├── src/
-│   ├── __init__.py
-│   │
-│   ├── config/
-│   │   └── settings.py             # Centralized configuration
-│   │
-│   ├── core/
-│   │   └── robot_controller.py     # Main orchestrator
-│   │
-│   ├── services/
-│   │   ├── speech/
-│   │   │   ├── speech_recognizer.py    # STT service
-│   │   │   ├── text_to_speech.py       # Legacy TTS (unused?)
-│   │   │   ├── base_stt_provider.py    # STT interface
-│   │   │   └── providers/
-│   │   │       └── google_stt_provider.py
-│   │   │
-│   │   ├── tts/
-│   │   │   ├── tts_service.py          # TTS factory
-│   │   │   ├── base_tts_provider.py    # TTS interface
-│   │   │   ├── gtts_provider.py        # Free TTS
-│   │   │   └── google_cloud_tts_provider.py  # Professional TTS
-│   │   │
-│   │   └── llm/
-│   │       ├── llm_service.py          # LLM factory
-│   │       ├── base_provider.py        # LLM interface
-│   │       ├── openai_provider.py      # ChatGPT
-│   │       └── anthropic_provider.py   # Claude (placeholder)
-│   │
-│   └── utils/
-│       └── logger.py                   # Logging setup
-│
-├── data/
-│   ├── audio/                          # TTS cache
-│   │   ├── gtts/                       # gTTS cache
-│   │   └── google_cloud/                # Google Cloud cache
-│   └── logs/
-│       └── robot.log                   # Application logs
-│
-├── tests/
-│   └── manual_stt_check.py            # Manual STT testing
-│
-└── docs/
-    ├── LLM_INTEGRATION_SUMMARY.md
-    ├── LLM_SETUP_GUIDE.md
-    └── ARCHITECTURE_OVERVIEW.md        # This file
+# 5. Run OpenRouter Integration Test
+python3 tests/test_openrouter.py
 ```
 
 ---
 
-## 🚀 Usage Example
-
-### Basic Usage
-
-```python
-# main.py already does this, but here's the flow:
-
-from src.config.settings import Settings
-from src.core.robot_controller import RobotController
-
-# 1. Load configuration
-settings = Settings()
-
-# 2. Create robot controller
-robot = RobotController(settings)
-
-# 3. Start the robot (async)
-await robot.start()
-
-# 4. Cleanup on exit
-robot.cleanup()
-```
-
-### Custom Provider Selection
-
-```env
-# .env file
-SPEECH_PROVIDER=whisper      # Use Whisper instead of Google
-TTS_PROVIDER=google_cloud    # Use Google Cloud TTS
-LLM_PROVIDER=openai          # Use ChatGPT
-```
-
-### Programmatic Provider Switching
-
-```python
-# Switch TTS provider at runtime
-robot.text_to_speech.switch_provider("google_cloud")
-
-# Change LLM personality
-robot.llm_service.set_personality("You are a funny robot...")
-```
-
----
-
-## 🔮 Future Enhancements
-
-### Planned Features (Referenced in Code)
-1. **Whisper STT Provider**: Offline speech recognition
-2. **Anthropic Provider**: Claude AI integration
-3. **Google Gemini Provider**: Google's LLM
-4. **Azure TTS Provider**: Microsoft TTS
-5. **Google Cloud STT**: Professional STT (not just free API)
-
-### Potential Improvements
-1. **WebSocket Support**: Remote control via web interface
-2. **Multi-User Support**: Handle multiple conversations
-3. **Intent Recognition**: NLU for command parsing
-4. **Skill System**: Modular capabilities (weather, calendar, etc.)
-5. **Voice Cloning**: Custom voice profiles
-6. **Offline Mode**: Full offline operation with Whisper + local LLM
-
----
-
-## 📊 Performance Characteristics
-
-### Typical Latency
-- **STT**: 1-3 seconds (Google API) or 2-5 seconds (Whisper local)
-- **LLM**: 1-5 seconds (GPT-3.5) or 3-10 seconds (GPT-4)
-- **TTS**: 0.5-2 seconds (cached) or 2-5 seconds (uncached)
-- **Total Response Time**: 3-10 seconds (typical)
-
-### Resource Usage
-- **Memory**: ~200-500 MB (base) + Whisper model size if used
-- **CPU**: Low (async I/O) + Whisper processing if used
-- **Network**: API calls (STT, LLM, TTS) - requires internet
-- **Disk**: Audio cache (50-100 MB typical)
-
-### Scalability Limits
-- **Concurrent Users**: 1 (single conversation loop)
-- **API Rate Limits**: Depends on provider (OpenAI, Google)
-- **Cache Size**: Configurable (default 50-100 MB)
-
----
-
-## 🎓 Learning Resources
-
-### Understanding the Codebase
-1. Start with `main.py` → understand entry point
-2. Read `RobotController` → understand main flow
-3. Explore services → understand provider pattern
-4. Check `Settings` → understand configuration
-
-### Key Concepts to Understand
-- **Async/Await**: Python async programming
-- **Provider Pattern**: Strategy pattern in Python
-- **Pydantic Settings**: Configuration management
-- **Speech Recognition**: Audio processing basics
-- **LLM APIs**: OpenAI API usage
-
----
-
-## ✅ Summary
-
-**NILA-V2** is a well-architected, production-ready voice AI bot with:
-
-✅ **Modular Design**: Easy to extend and maintain  
-✅ **Provider Abstraction**: Switch services via config  
-✅ **Async Architecture**: Responsive and scalable  
-✅ **Comprehensive Features**: STT, LLM, TTS all integrated  
-✅ **Professional Quality**: Error handling, logging, statistics  
-✅ **Multilingual Support**: English + Malayalam  
-
-**Perfect for:**
-- Robot assistants
-- Exhibition bots
-- Voice-controlled applications
-- Multilingual AI systems
-
-**Ready for:**
-- Production deployment
-- Further customization
-- Feature extensions
-- Provider additions
-
----
-
-*Last Updated: Based on current codebase analysis*  
-*Architecture Version: 1.0*
-
+*Last Updated: August 2026*  
+*Architecture Version: 2.0 (Event-Driven Architecture)*

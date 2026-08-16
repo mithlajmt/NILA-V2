@@ -38,22 +38,22 @@ class AudioCapture:
         # 16-bit = 2 bytes per sample
         self.chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000) * 2
         
-        # Use default PipeWire source
-        self.device_id = "default"
+        # Microphone Device ID
+        self.device_id = device_name if device_name else "default"
         
-        self.logger.info(f"🎙️ AudioCapture initialized (rate={self.config.sample_rate}Hz, threshold={self.config.energy_threshold})")
+        self.logger.info(f"🎙️ AudioCapture initialized (device='{self.device_id}', rate={self.config.sample_rate}Hz, threshold={self.config.energy_threshold})")
 
     def record(self, 
                timeout: int = 30,
-               silence_duration: float = 1.0,
-               min_speech_duration: float = 0.5) -> Optional[bytes]:
+               silence_duration: float = 0.6,
+               min_speech_duration: float = 0.4) -> Optional[bytes]:
         """
         Record audio using 'parecord' or 'arecord' subprocess
         """
         process = None
         try:
-            self.logger.info(f"🎯 Listening via Audio Subprocess...")
-            print("🎯 Listening... (Speak naturally)")
+            self.logger.info(f"🎯 Listening via Audio Subprocess (device: {self.device_id})...")
+            print(f"🎯 Listening... (Device: {self.device_id})")
             
             if shutil.which('parecord'):
                 cmd = [
@@ -63,6 +63,8 @@ class AudioCapture:
                     f'--channels={self.config.channels}',
                     '--raw',
                 ]
+                if self.device_id and self.device_id != "default":
+                    cmd.append(f'--device={self.device_id}')
             elif shutil.which('arecord'):
                 cmd = [
                     'arecord',
@@ -71,6 +73,8 @@ class AudioCapture:
                     '-c', str(self.config.channels),
                     '-t', 'raw',
                 ]
+                if self.device_id and self.device_id != "default":
+                    cmd.extend(['-D', self.device_id])
             else:
                 raise RuntimeError("Neither 'parecord' nor 'arecord' audio recording utility was found on your system.")
             

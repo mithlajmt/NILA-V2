@@ -38,38 +38,28 @@ async def test_decoupled_flow():
         audio_player = AudioPlayer()
         
         # Initialize TTSService
-        tts_service = TTSService(settings, audio_player, mock_hardware)
+        tts_service = TTSService(settings)
         
         print(f"✅ TTSService initialized with {tts_service.get_provider_info()}")
         
-        # Mock generate_audio to return a fake path so we don't need network/files
-        with patch.object(tts_service.provider, 'generate_audio', return_value=MagicMock()) as mock_generate:
+        # Mock generate_audio and _play_audio to return fake paths/futures
+        with patch.object(tts_service.provider, '_generate_audio', return_value=MagicMock()) as mock_generate, \
+             patch.object(tts_service.provider, '_play_audio', new_callable=MagicMock) as mock_play:
             mock_generate.return_value.exists.return_value = True
             mock_generate.return_value.name = "test.mp3"
+            mock_play.return_value = asyncio.Future()
+            mock_play.return_value.set_result(None)
             
             # Test Speak
             print("🗣️  Calling speak('Hello world')...")
             await tts_service.speak("Hello world")
             
-            # Verify generate_audio was called
+            # Verify generate_audio and play_audio were called
             mock_generate.assert_called_once()
-            print("✅ generate_audio called")
+            print("✅ _generate_audio called")
             
-            # Verify audio_player.play was called with callback
-            # We can't easily mock the async method of the instance we just created without more patching,
-            # but we can check if hardware callback was passed if we mock AudioPlayer.play
-            
-            # Let's try a more integration-style test where we let AudioPlayer.play run (mocked pygame)
-            # and see if it tries to play.
-            
-            mock_pygame.mixer.music.load.assert_called()
-            mock_pygame.mixer.music.play.assert_called()
-            print("✅ AudioPlayer.play triggered pygame")
-            
-            # Since we mocked pygame, the _play_with_analysis loop in AudioPlayer won't run effectively 
-            # unless we mock wave.open etc. 
-            # But we verified the wiring: TTSService -> AudioPlayer -> Pygame
-            
+            mock_play.assert_called_once()
+            print("✅ _play_audio called")
             print("✅ Decoupled flow verified!")
 
 if __name__ == "__main__":

@@ -83,9 +83,15 @@ class OpenRouterProvider(BaseLLMProvider):
             self.stats['total_tokens_used'] += response.usage.total_tokens
             
             self.logger.info(f"✅ Response generated ({response.usage.total_tokens} tokens)")
-            self.logger.debug(f"📝 Response: {assistant_message[:100]}...")
             
-            return assistant_message
+            # Clean text of any accidental stage notes or parentheses like (Speaking in Malayalam)
+            import re
+            cleaned_message = re.sub(r'[\(\[\*].*?[\)\]\*]', '', assistant_message).strip()
+            if not cleaned_message:
+                cleaned_message = assistant_message
+
+            self.logger.debug(f"📝 Response: {cleaned_message[:100]}...")
+            return cleaned_message
             
         except Exception as e:
             self.logger.error(f"❌ OpenRouter API error: {e}")

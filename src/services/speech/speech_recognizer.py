@@ -106,8 +106,8 @@ class SpeechRecognizer:
                 None,
                 lambda: self.audio_capture.record(
                     timeout=timeout,
-                    silence_duration=1.5,
-                    min_speech_duration=0.5
+                    silence_duration=0.5,
+                    min_speech_duration=0.3
                 )
             )
             
