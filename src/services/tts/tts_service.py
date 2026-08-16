@@ -38,6 +38,10 @@ class TTSService:
             elif provider_name == "piper":
                 self.provider = PiperTTSProvider(self.settings)
                 
+            elif provider_name == "elevenlabs":
+                from .elevenlabs_tts_provider import ElevenLabsTTSProvider
+                self.provider = ElevenLabsTTSProvider(self.settings)
+                
             elif provider_name == "google_cloud":
                 from .google_cloud_tts_provider import GoogleCloudTTSProvider
                 self.provider = GoogleCloudTTSProvider(self.settings)

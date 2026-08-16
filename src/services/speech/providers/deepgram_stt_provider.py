@@ -96,20 +96,36 @@ class DeepgramSTTProvider(BaseSTTProvider):
                 detect_language=True if lang is None else False,
             )
             
+            # Wrap raw PCM audio in WAV container if missing WAV header
+            if not audio_bytes.startswith(b'RIFF'):
+                import io
+                import wave
+                buf = io.BytesIO()
+                with wave.open(buf, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(16000)
+                    wf.writeframes(audio_bytes)
+                send_bytes = buf.getvalue()
+            else:
+                send_bytes = audio_bytes
+
             # Create audio source from bytes
-            # Deepgram expects a dict with 'buffer' key for raw audio
             payload = {
-                "buffer": audio_bytes,
+                "buffer": send_bytes,
+                "mimetype": "audio/wav"
             }
             
             # Perform transcription (async)
             self.logger.debug("🎯 Sending audio to Deepgram...")
             loop = asyncio.get_event_loop()
             
-            # Run the synchronous Deepgram call in executor
+            # Use rest client if available, fallback to prerecorded
+            listen_client = getattr(self.client.listen, 'rest', self.client.listen.prerecorded)
+            
             response = await loop.run_in_executor(
                 None,
-                lambda: self.client.listen.prerecorded.v("1").transcribe_file(
+                lambda: listen_client.v("1").transcribe_file(
                     payload,
                     options
                 )

@@ -4,6 +4,7 @@ import threading
 import time
 import re
 import audioop
+import shutil
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 import webrtcvad
@@ -19,11 +20,10 @@ class AudioConfig:
 
 class AudioCapture:
     """
-    PipeWire Audio Capture using 'parecord'
+    PipeWire / ALSA Audio Capture using 'parecord' or 'arecord'
     
-    Robust for Raspberry Pi 5 with Bluetooth:
-    - Uses PipeWire/PulseAudio stack (native to Bookworm)
-    - Compatible with Bluetooth speakers (no "Device Busy" errors)
+    Robust for Raspberry Pi 5 / Linux audio stack:
+    - Uses PipeWire/PulseAudio stack or ALSA fallback
     - Full-Duplex capable
     """
     
@@ -39,30 +39,40 @@ class AudioCapture:
         self.chunk_size = int(self.config.sample_rate * self.config.chunk_duration_ms / 1000) * 2
         
         # Use default PipeWire source
-        self.device_id = "default (PipeWire)"
+        self.device_id = "default"
         
-        self.logger.info(f"🎙️ AudioCapture initialized via PipeWire (rate={self.config.sample_rate}Hz, threshold={self.config.energy_threshold})")
+        self.logger.info(f"🎙️ AudioCapture initialized (rate={self.config.sample_rate}Hz, threshold={self.config.energy_threshold})")
 
     def record(self, 
                timeout: int = 30,
                silence_duration: float = 1.0,
                min_speech_duration: float = 0.5) -> Optional[bytes]:
         """
-        Record audio using 'parecord' subprocess
+        Record audio using 'parecord' or 'arecord' subprocess
         """
         process = None
         try:
-            self.logger.info(f"🎯 Listening via PipeWire...")
+            self.logger.info(f"🎯 Listening via Audio Subprocess...")
             print("🎯 Listening... (Speak naturally)")
             
-            # Command: parecord --format=s16le --rate=16000 --channels=1 --raw
-            cmd = [
-                'parecord',
-                '--format=s16le',
-                f'--rate={self.config.sample_rate}',
-                f'--channels={self.config.channels}',
-                '--raw',
-            ]
+            if shutil.which('parecord'):
+                cmd = [
+                    'parecord',
+                    '--format=s16le',
+                    f'--rate={self.config.sample_rate}',
+                    f'--channels={self.config.channels}',
+                    '--raw',
+                ]
+            elif shutil.which('arecord'):
+                cmd = [
+                    'arecord',
+                    '-f', 'S16_LE',
+                    '-r', str(self.config.sample_rate),
+                    '-c', str(self.config.channels),
+                    '-t', 'raw',
+                ]
+            else:
+                raise RuntimeError("Neither 'parecord' nor 'arecord' audio recording utility was found on your system.")
             
             # Start recording process
             process = subprocess.Popen(
