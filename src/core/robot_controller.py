@@ -82,6 +82,14 @@ class RobotController:
         
         self.logger.info("🚀 Robot starting Event-Driven Runtime Loop...")
         
+        # Check if Realtime WebSocket Mode is enabled in .env
+        if getattr(self.settings, "ENABLE_REALTIME_MODE", False):
+            self.logger.info("📡 ENABLE_REALTIME_MODE=True: Launching Gemini 3.1 Live Engine...")
+            from src.services.realtime.gemini_live_provider import GeminiLiveProvider
+            self.live_provider = GeminiLiveProvider(self.settings)
+            await self.live_provider.start_live_session()
+            return
+
         # Step 3: Speak greeting
         await self._speak_greeting()
         
@@ -283,12 +291,22 @@ class RobotController:
         """Stop the robot"""
         self.is_running = False
         self.conversation_active = False
+        if hasattr(self, 'live_provider') and self.live_provider:
+            self.live_provider.stop()
         self.logger.info("🛑 Robot stopping...")
     
     def cleanup(self):
         """Cleanup resources"""
         self.logger.info("🧹 Cleaning up robot resources...")
-        
+        import sounddevice as sd
+        try:
+            sd.stop()
+        except Exception:
+            pass
+
+        if hasattr(self, 'live_provider') and self.live_provider:
+            self.live_provider.stop()
+
         if hasattr(self, 'text_to_speech'):
             self.text_to_speech.cleanup()
         

@@ -1,76 +1,104 @@
-# NILA-V2: AI Robot Companion
+# 🤖 NILA-V2: Setup & Quick Start Helper
 
-NILA-V2 is an advanced AI robot companion capable of speech recognition, intelligent conversation (via LLMs), and expressive text-to-speech with lip-sync capabilities. It is designed to run on platforms like Raspberry Pi.
+Welcome to **NILA-V2** by Robuverse! This document is your quick setup helper to get Nila up and running on your laptop or Raspberry Pi.
 
-## Features
-- **Speech Recognition**: Uses `SpeechRecognition` with `webrtcvad` for voice activity detection.
-- **LLM Integration**: Supports OpenAI, Anthropic, and OpenRouter for intelligent responses.
-- **Text-to-Speech**:
-  - **Piper TTS**: High-quality, local neural TTS with low latency (Recommended for Pi).
-  - **Google Cloud TTS**: High-quality cloud-based TTS.
-  - **gTTS**: Basic fallback.
-- **Hardware Control**: Controls a robotic head (jaw and eye LEDs) via Arduino using serial communication.
-- **Lip Sync**: Synchronizes jaw movement with speech amplitude.
+---
 
-## Hardware Requirements
-- **Raspberry Pi 4 or 5** (Recommended for better performance with local TTS).
-- **USB Microphone**.
-- **Speaker** (3.5mm jack or USB).
-- **Arduino** (Uno/Nano) connected via USB for servo control.
-- **Servo Motor** (for jaw) and **LEDs** (for eyes).
+## 🚀 Quick Setup Helper
 
-## Installation on Raspberry Pi
+### 1. Automated Installation (Recommended for Raspberry Pi & Linux)
 
-### 1. Quick Start (Recommended)
-The easiest way to get up and running is to use the automated setup script.
+Run the automated setup script to install system dependencies, set up a Python virtual environment, download local Malayalam voice models, and configure serial permissions:
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/mithlajmt/NILA-V2.git
-cd NILA-V2
-
-# 2. Run the setup script
-bash setup.sh
+chmod +x setup.sh
+./setup.sh
 ```
 
-This script will automatically:
-- Install system dependencies (ffmpeg, portaudio, etc.)
-- Create a Python virtual environment
-- Install Python libraries
-- Download Piper TTS binary and voices (Ryan, Lessac, Arjun, Meera)
-- Download Vosk speech recognition model
+### 2. Manual Setup
 
-### 2. Configuration
-After setup, configure your environment:
+If setting up manually:
 
 ```bash
-# Edit the configuration file
-nano .env
+# 1. Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 2. Install Python dependencies
+pip install -r requirements.txt
+
+# 3. Download local Malayalam Piper TTS voice model
+python3 scripts/setup_piper.py
+
+# 4. Copy environment configuration template
+cp .env.template .env
 ```
 
-**Key Settings:**
-- `SPEECH_PROVIDER`: `google` (online) or `vosk` (offline)
-- `TTS_PROVIDER`: `piper` (offline, recommended)
-- `SERIAL_PORT`: `/dev/ttyUSB0` (for Arduino)
+---
 
-### 3. Running the Robot
+## ⚙️ Environment Setup (`.env`)
+
+Edit your `.env` file to configure keys, speech settings, and personality:
+
+```env
+# --- MODE SELECTION ---
+ENABLE_REALTIME_MODE=True            # True = Gemini Live WebSockets | False = 3-Step Offline Pipeline
+REALTIME_PROVIDER=gemini_live        # gemini_live
+
+# --- GEMINI LIVE SPEECH & PERSONALITY ---
+GEMINI_API_KEY=AIzaSyYourActualKeyHere
+GEMINI_LIVE_VOICE=Puck              # Puck, Charon, Kore, Fenrir, Aoede
+GEMINI_LIVE_SILENCE_CHUNKS=18      # ~1.15s silence before turn commit (prevents cutting off mid-sentence)
+
+# Personality System Prompt
+LLM_SYSTEM_PROMPT="You are Nila, a funny humanoid robot built by Robuverse in Kerala. Speak short, friendly, and naturally in Malayalam or English."
+
+# --- 3-STEP PIPELINE FALLBACK (OFFLINE / BACKUP) ---
+SPEECH_PROVIDER=whisper            # whisper | deepgram | google
+LLM_PROVIDER=openrouter            # openrouter | openai | anthropic | google
+TTS_PROVIDER=piper                 # piper (local Malayalam) | elevenlabs | openai
+```
+
+---
+
+## 🎮 Running Nila
+
+### Start Full Robot Engine
 ```bash
 source venv/bin/activate
-python main.py
+python3 main.py
 ```
 
-### Manual Setup (Advanced)
-If you prefer to set up manually, see `docs/MANUAL_SETUP.md` (optional).
+### Test Gemini Live Speech (Standalone Diagnostic)
+```bash
+python3 scripts/test_gemini_live.py
+```
 
-## Troubleshooting
+### Run Hardware Diagnostics
+```bash
+# Test microphone input & speaker output
+python3 scripts/test_audio_capture.py
 
-### Audio Issues
-- **"No Default Output Device Available"**: Check your audio settings in `raspi-config` or use `alsamixer`.
-- **Microphone not working**: Test with `arecord -d 5 test.wav` and `aplay test.wav`.
+# Test Arduino USB serial connection & jaw servo lip-sync
+python3 scripts/test_hardware.py
 
-### Serial Permission Error
-If you get "Permission denied" for `/dev/ttyUSB0`, the setup script tries to fix this, but you may need to **reboot** or **logout/login** for the changes to take effect.
+# Detect connected Arduino serial port (/dev/ttyUSB0)
+python3 scripts/find_arduino.py
+```
 
-### Piper Issues
-- Ensure the `piper` binary has execute permissions: `chmod +x tools/piper/piper`.
-- The setup script automatically detects your architecture (64-bit vs 32-bit).
+---
+
+## 🔧 Raspberry Pi Audio Fix
+
+If running on Raspberry Pi and encountering ALSA errors (`Invalid card 'card'`):
+
+```bash
+chmod +x scripts/fix_pi_audio.sh
+./scripts/fix_pi_audio.sh
+```
+
+---
+
+## 📘 Comprehensive Architecture & Developer Guide
+
+For detailed technical architecture, execution flow diagrams, and a developer roadmap on where to add future code (Next.js/Flutter frontend, Agent Workflows, Camera Vision), refer to **[DEVELOPER_GUIDE.md](file:///home/hp/Desktop/robuverse-internal/NILA-V2/DEVELOPER_GUIDE.md)**.

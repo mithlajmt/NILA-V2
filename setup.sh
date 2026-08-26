@@ -39,16 +39,13 @@ echo -e "\n${GREEN}[3/6] Installing Python Dependencies...${NC}"
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 4. Setup Models (Piper & Vosk)
+# 4. Setup Models (Piper)
 echo -e "\n${GREEN}[4/6] Downloading AI Models...${NC}"
 # Make scripts executable
 chmod +x scripts/*.py
 
 echo "Running Piper TTS setup..."
 python3 scripts/setup_piper.py
-
-echo "Running Vosk setup..."
-python3 scripts/setup_vosk.py
 
 # 5. Configuration
 echo -e "\n${GREEN}[5/6] Configuration...${NC}"

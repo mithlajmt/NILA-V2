@@ -52,12 +52,11 @@ class OpenRouterProvider(BaseLLMProvider):
             history_to_send = self.get_history(limit=self.max_history)
             messages.extend(history_to_send)
             
-            # Add language hint if Malayalam detected
-            if language == "ml":
-                messages.append({
-                    "role": "system",
-                    "content": "Note: The user spoke in Malayalam. You can acknowledge this and respond warmly. Use simple English or basic Malayalam phrases if appropriate."
-                })
+            # Instruct LLM to respond in Malayalam script
+            messages.append({
+                "role": "system",
+                "content": "IMPORTANT: Respond ONLY in natural Malayalam using native Malayalam script (e.g. സുഖമാണോ?). Do NOT use English."
+            })
             
             # Call OpenRouter API
             self.logger.debug(f"📡 Calling OpenRouter API...")

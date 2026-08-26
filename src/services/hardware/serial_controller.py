@@ -89,9 +89,7 @@ class SerialController:
             
         except Exception as e:
             self.logger.error(f"❌ Serial write error: {e}")
-            # Try to reconnect once
             self.close()
-            self.connect()
             
     def close(self):
         """Close serial connection"""

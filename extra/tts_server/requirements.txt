@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-torch
-transformers
-parler_tts
-soundfile
-scipy

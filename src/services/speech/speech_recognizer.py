@@ -62,7 +62,7 @@ class SpeechRecognizer:
             except Exception as e:
                 self.logger.warning(f"⚠️ Whisper init failed: {e}. Falling back to Google.")
                 self.provider_name = "google"
-                self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
+                self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "ml-IN"))
         elif self.provider_name == "deepgram":
             try:
                 from src.services.speech.providers.deepgram_stt_provider import DeepgramSTTProvider
@@ -82,9 +82,9 @@ class SpeechRecognizer:
             except Exception as e:
                 self.logger.warning(f"⚠️ Deepgram init failed: {e}. Falling back to Google.")
                 self.provider_name = "google"
-                self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
+                self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "ml-IN"))
         else:
-            self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "en-IN"))
+            self.provider = GoogleSTTProvider(default_language=getattr(self.settings, "STT_LANGUAGE", "ml-IN"))
 
     # ---------- public API ----------
     async def listen(self, timeout: int = 30) -> Optional[str]:

@@ -94,9 +94,10 @@ class EventBus:
             if pattern.match(event.topic):
                 handlers_to_call.append(handler)
 
-        if not handlers_to_call:
-            self.logger.debug(f"No subscribers for topic '{event.topic}'")
-            return
+        # Log event emission in clean human-readable format
+        if event.topic != "speech.amplitude":
+            summary = self._format_event_summary(event)
+            self.logger.info(f"⚡ [EVENT] {summary}")
 
         # Execute handlers with exception isolation
         tasks = []
@@ -104,6 +105,26 @@ class EventBus:
             tasks.append(self._dispatch_to_handler(handler, event))
 
         await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _format_event_summary(self, event: Event) -> str:
+        """Format complex event objects into simple 1-line human readable text"""
+        topic = event.topic
+        if topic == "state.change":
+            old_s = getattr(event, "old_state", "?")
+            new_s = getattr(event, "new_state", "?")
+            reason = getattr(event, "reason", "")
+            return f"State Change: {old_s} ➔ {new_s} ({reason})"
+        elif topic == "tts.playback":
+            status = getattr(event, "status", "unknown")
+            return f"TTS Playback: {status}"
+        elif topic == "llm.response":
+            text = getattr(event, "text", "")
+            return f"LLM Response: \"{text[:60]}...\"" if len(text) > 60 else f"LLM Response: \"{text}\""
+        elif topic == "stt.transcript":
+            text = getattr(event, "transcript", "")
+            return f"STT Transcript: \"{text}\""
+        else:
+            return f"{topic} ➔ {type(event).__name__}"
 
     def publish_threadsafe(self, event: Event):
         """
