@@ -1,6 +1,9 @@
 import asyncio
 import logging
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.core.robot_controller import RobotController
 from src.config.settings import Settings
 from src.utils.logger import setup_logger

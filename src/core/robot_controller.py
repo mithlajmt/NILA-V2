@@ -74,6 +74,7 @@ class RobotController:
         """Start the robot - Step 3: Speak greeting, listen, and respond with AI"""
         self.is_running = True
         self.conversation_active = True
+        self._active_task = asyncio.current_task()
         self.stats['start_time'] = time.time()
         
         # Set active loop on EventBus
@@ -288,11 +289,16 @@ class RobotController:
         await asyncio.sleep(0.5)
     
     def stop(self):
-        """Stop the robot"""
+        """Stop the robot immediately"""
         self.is_running = False
         self.conversation_active = False
         if hasattr(self, 'live_provider') and self.live_provider:
             self.live_provider.stop()
+        if hasattr(self, '_active_task') and self._active_task and not self._active_task.done():
+            try:
+                self._active_task.cancel()
+            except Exception:
+                pass
         self.logger.info("🛑 Robot stopping...")
     
     def cleanup(self):

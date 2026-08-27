@@ -47,8 +47,8 @@ class GeminiLiveProvider:
         self.output_rate = 24000
         self.channels = 1
         self.chunk_size = 1024
-        self.default_threshold = 500
-        self.min_speech_chunks = 3
+        self.default_threshold = getattr(settings, "GEMINI_LIVE_DEFAULT_THRESHOLD", 150)
+        self.min_speech_chunks = getattr(settings, "GEMINI_LIVE_MIN_SPEECH_CHUNKS", 3)
         self.trailing_silence_limit = getattr(settings, "GEMINI_LIVE_SILENCE_CHUNKS", 18)
         self.cooldown_after_speech = getattr(settings, "GEMINI_LIVE_COOLDOWN", 0.8)
 
@@ -153,6 +153,7 @@ class GeminiLiveProvider:
             return
 
         self.is_running = True
+        self._active_task = asyncio.current_task()
         self.logger.info("📡 Connecting to Google Gemini 3.1 Live WebSocket API...")
 
         client = genai.Client(
@@ -191,7 +192,7 @@ class GeminiLiveProvider:
             await asyncio.sleep(1.0)
 
         avg_noise = sum(noise_samples) / max(1, len(noise_samples))
-        speech_threshold = max(self.default_threshold, int(avg_noise * 2.2))
+        speech_threshold = max(self.default_threshold, int(avg_noise * 1.5 + 30))
         self.logger.info(f"✅ Noise Calibration Complete! Baseline: {int(avg_noise)} | Speech Threshold: {speech_threshold}")
 
         def mic_callback(indata, frames, time_info, status):
@@ -411,10 +412,15 @@ class GeminiLiveProvider:
             self.logger.info("👋 Gemini Live WebSocket Session Ended.")
 
     def stop(self):
-        """Stop the live session"""
+        """Stop the live session immediately"""
         self.is_running = False
         self.is_speaking = False
         try:
             sd.stop()
         except Exception:
             pass
+        if hasattr(self, "_active_task") and self._active_task and not self._active_task.done():
+            try:
+                self._active_task.cancel()
+            except Exception:
+                pass

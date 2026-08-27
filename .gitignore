@@ -47,6 +47,11 @@ data/logs/
 voices_temp.json
 .git.backup
 
+# Credentials & OAuth Tokens
+data/credentials/
+client_secret*.json
+gmail_token.json
+
 # Test outputs
 test.wav
 *.wav

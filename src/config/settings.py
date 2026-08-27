@@ -53,9 +53,15 @@ class Settings(BaseSettings):
     # Gemini Live WebSocket Settings
     GEMINI_LIVE_MODEL: str = Field(default="gemini-3.1-flash-live-preview", env="GEMINI_LIVE_MODEL")
     GEMINI_LIVE_VOICE: str = Field(default="Fenrir", env="GEMINI_LIVE_VOICE") # Fenrir, Charon (Male), Kore, Aoede (Female), Puck
+
+    # Telegram Personal User Account Settings (Telethon)
+    TELEGRAM_API_ID: int = Field(default=0, env="TELEGRAM_API_ID")
+    TELEGRAM_API_HASH: str = Field(default="", env="TELEGRAM_API_HASH")
+    TELEGRAM_PHONE_NUMBER: str = Field(default="", env="TELEGRAM_PHONE_NUMBER")
+    TELEGRAM_SESSION_PATH: str = Field(default="data/telegram_user", env="TELEGRAM_SESSION_PATH")
     GEMINI_LIVE_SILENCE_CHUNKS: int = Field(default=18, env="GEMINI_LIVE_SILENCE_CHUNKS") # 18 chunks ~= 1.15s silence before cutoff
-    GEMINI_LIVE_MIN_SPEECH_CHUNKS: int = Field(default=4, env="GEMINI_LIVE_MIN_SPEECH_CHUNKS") # 4 chunks ~= 250ms min speech duration
-    GEMINI_LIVE_DEFAULT_THRESHOLD: int = Field(default=500, env="GEMINI_LIVE_DEFAULT_THRESHOLD")
+    GEMINI_LIVE_MIN_SPEECH_CHUNKS: int = Field(default=3, env="GEMINI_LIVE_MIN_SPEECH_CHUNKS") # 3 chunks ~= 180ms min speech duration
+    GEMINI_LIVE_DEFAULT_THRESHOLD: int = Field(default=150, env="GEMINI_LIVE_DEFAULT_THRESHOLD")
     GEMINI_LIVE_COOLDOWN: float = Field(default=0.8, env="GEMINI_LIVE_COOLDOWN")
     GEMINI_LIVE_FILTER_TYPE: str = Field(default="none", env="GEMINI_LIVE_FILTER_TYPE") # none, cyber_robot, deep_beast, radio_intercom, flanger_chassis
     GEMINI_LIVE_ROBOTIC_EFFECT: bool = Field(default=False, env="GEMINI_LIVE_ROBOTIC_EFFECT")
