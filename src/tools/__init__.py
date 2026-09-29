@@ -9,6 +9,7 @@ from .gmail_tools import read_unread_emails, create_gmail_draft, send_gmail_draf
 from .calendar_tools import get_today_schedule, get_calendar_events, create_calendar_event
 from .telegram_user import send_telegram_user_message, read_telegram_user_messages, get_recent_telegram_chats
 from .telegram_bot import send_telegram_bot_message, read_telegram_bot_messages
+from .erp_tools import check_erp_leads, create_erp_lead, update_erp_lead_status
 
 __all__ = [
     "ToolRegistry",
@@ -30,6 +31,9 @@ __all__ = [
     "get_recent_telegram_chats",
     "send_telegram_bot_message",
     "read_telegram_bot_messages",
+    "check_erp_leads",
+    "create_erp_lead",
+    "update_erp_lead_status",
 ]
 
 

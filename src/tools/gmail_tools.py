@@ -170,7 +170,7 @@ def read_unread_emails(query: str = "is:unread", max_results: int = 5) -> str:
 # ---------------------------------------------------------------------------
 @register_tool(
     name="create_gmail_draft",
-    description="Create a draft email in Gmail without sending it immediately. ALWAYS use this tool FIRST when a user requests to compose or send an email. After calling this, ask the user for explicit confirmation before calling send_gmail_draft.",
+    description="Create a draft email in Gmail without sending it immediately. ALWAYS use this tool FIRST when a user requests to compose or send an email. Expand simple voice instructions into a complete, professional, well-structured email body.",
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -180,11 +180,11 @@ def read_unread_emails(query: str = "is:unread", max_results: int = 5) -> str:
             },
             "subject": {
                 "type": "STRING",
-                "description": "Subject line of the email",
+                "description": "Clear, professional, and descriptive subject line (e.g. 'Leave Request Status Update', 'Important Notice Regarding Your Leave Application').",
             },
             "body": {
                 "type": "STRING",
-                "description": "Plain text body content of the email",
+                "description": "Full professional, well-structured, formal email body. MUST include a polite greeting (e.g. 'Dear [Name],'), clear context and explanation, next steps/instructions, and a professional sign-off (e.g. 'Best regards, [Sender Name/Management]'). NEVER output lazy, raw spoken fragments.",
             }
         },
         "required": ["to_email", "subject", "body"],
@@ -276,7 +276,7 @@ def send_gmail_draft(draft_id: str) -> str:
 # ---------------------------------------------------------------------------
 @register_tool(
     name="send_gmail_message",
-    description="Directly send an outgoing email message via Gmail. WARNING: Prefer calling create_gmail_draft first unless the user has ALREADY explicitly confirmed sending.",
+    description="Directly send an outgoing email message via Gmail. Expand simple voice instructions into a complete, professional, well-structured email body.",
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -286,11 +286,11 @@ def send_gmail_draft(draft_id: str) -> str:
             },
             "subject": {
                 "type": "STRING",
-                "description": "Subject line of the email",
+                "description": "Clear, professional, and descriptive subject line (e.g. 'Leave Request Status Update', 'Notice Regarding Your Application').",
             },
             "body": {
                 "type": "STRING",
-                "description": "Plain text body content of the email",
+                "description": "Full professional, well-structured, formal email body. MUST include a polite greeting (e.g. 'Dear [Name],'), clear context and explanation, next steps/instructions, and a professional sign-off (e.g. 'Best regards, [Sender Name/Management]'). NEVER output raw 1-liner spoken fragments.",
             }
         },
         "required": ["to_email", "subject", "body"],

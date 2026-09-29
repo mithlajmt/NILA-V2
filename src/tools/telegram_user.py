@@ -8,8 +8,12 @@ import json
 import logging
 import os
 from typing import Any, Dict, Optional
-from telethon import TelegramClient
-from telethon.errors import RPCError
+try:
+    from telethon import TelegramClient
+    from telethon.errors import RPCError
+except ImportError:
+    TelegramClient = Any
+    RPCError = Exception
 from src.tools.registry import register_tool
 
 logger = logging.getLogger(__name__)
@@ -60,7 +64,7 @@ async def get_telegram_client() -> Optional[TelegramClient]:
 # ---------------------------------------------------------------------------
 @register_tool(
     name="send_telegram_user_message",
-    description="Send a message directly from your personal Telegram account to a contact, username, or group (e.g. 'shahul', '@shahul', 'Rahul').",
+    description="Send a message directly from your personal Telegram account to a contact, username, or group (e.g. 'shahul', '@shahul', 'Rahul'). Expand simple voice commands into clear, polite, and well-written chat messages.",
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -70,7 +74,7 @@ async def get_telegram_client() -> Optional[TelegramClient]:
             },
             "message": {
                 "type": "STRING",
-                "description": "The exact text message content to send",
+                "description": "Polite, well-crafted text message content. Expand raw voice commands into complete, clear, and professional chat messages.",
             }
         },
         "required": ["recipient", "message"],
