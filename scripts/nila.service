@@ -1,0 +1,18 @@
+[Unit]
+Description=NILA Voice Assistant
+After=network.target sound.target bluetooth.target
+Wants=network.target sound.target bluetooth.target
+
+[Service]
+Type=simple
+User=learnlogicai
+WorkingDirectory=/home/learnlogicai/nilaprod/NILA-V2
+Environment="PATH=/home/learnlogicai/nilaprod/NILA-V2/venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStartPre=/bin/sleep 25
+ExecStartPre=-/usr/bin/bluetoothctl connect CA:55:F3:A4:93:4A
+ExecStart=/home/learnlogicai/nilaprod/NILA-V2/venv/bin/python /home/learnlogicai/nilaprod/NILA-V2/main.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
