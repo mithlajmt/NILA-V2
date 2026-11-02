@@ -64,12 +64,12 @@ class ToolRegistry:
             logger.warning("⚠️ 'google-genai' SDK not installed; skipping Gemini tool conversion.")
             return []
 
-        expo_allowed = {"trigger_robot_gesture", "get_current_time", "get_weather"}
+        if expo_mode:
+            # In Expo mode, disable tools completely to eliminate function-calling loops
+            return []
 
         declarations = []
         for name, tool_info in cls._registry.items():
-            if expo_mode and name not in expo_allowed:
-                continue
             param_schema = tool_info["parameters"]
             
             # Build Gemini Schema parameters object

@@ -17,6 +17,12 @@ def main():
     # Load configuration
     settings = Settings()
     
+    # Auto-connect Bluetooth speaker if configured
+    mac = getattr(settings, "BT_SPEAKER_MAC", "41:42:84:29:F2:CE")
+    if mac:
+        import os
+        os.system(f"echo 'connect {mac}' | bluetoothctl > /dev/null 2>&1")
+    
     # Initialize robot controller
     robot = RobotController(settings)
     

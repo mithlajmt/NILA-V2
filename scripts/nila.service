@@ -10,9 +10,10 @@ WorkingDirectory=/home/learnlogicai/nilaprod/NILA-V2
 Environment="PATH=/home/learnlogicai/nilaprod/NILA-V2/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
+ExecStartPre=-/bin/bash -c "echo 'connect 41:42:84:29:F2:CE' | bluetoothctl; sleep 2"
 ExecStart=/home/learnlogicai/nilaprod/NILA-V2/venv/bin/python /home/learnlogicai/nilaprod/NILA-V2/main.py
-Restart=on-failure
-RestartSec=5s
+Restart=always
+RestartSec=3s
 
 [Install]
 WantedBy=multi-user.target

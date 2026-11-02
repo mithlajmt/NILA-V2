@@ -88,6 +88,44 @@ python3 scripts/find_arduino.py
 
 ---
 
+## ⚡ Auto-Start & Background Service Guide (`nila.service`)
+
+NILA is completely set up and configured to run automatically in the background as a `systemd` service (`nila.service`) whenever the Raspberry Pi powers on or is plugged into a charger.
+
+### 📋 Useful Service Commands
+
+| Action | Command | Description |
+| :--- | :--- | :--- |
+| **👀 View Live Terminal / Logs** | `journalctl -u nila.service -f` | Stream live application logs, speech conversations & terminal output |
+| **🔄 Restart Program** | `sudo systemctl restart nila.service` | Restart the robot service (after code or `.env` changes) |
+| **⏹️ Stop Program** | `sudo systemctl stop nila.service` | Stop the background service (e.g. to run manually) |
+| **▶️ Start Program** | `sudo systemctl start nila.service` | Start the background service manually |
+| **📊 Check Service Status** | `sudo systemctl status nila.service` | View PID, active state, uptime, and latest status output |
+
+---
+
+### 🔍 Auto-Start & Fail-Safe Highlights
+
+1. **Auto-Start on Power / Charge**:
+   - `Loaded: ... enabled` means as soon as the Pi powers on when connected to power/charger, NILA starts automatically in the background without requiring manual intervention.
+2. **Bluetooth Fail-Safe**:
+   - At boot, the service automatically attempts to connect to the Bluetooth speaker (`ExecStartPre=-/bin/bash -c ...`).
+   - If the speaker is powered off or temporarily out of range (`br-connection-page-timeout`), the `-` fail-safe prefix ensures `systemd` does not crash and proceeds to start NILA normally. Once the speaker is switched on within range, it connects automatically.
+3. **Crash Recovery**:
+   - `Restart=on-failure` with `RestartSec=5s` automatically recovers and relaunches NILA if an unexpected network or application interruption occurs.
+
+---
+
+### 🛠️ Installing or Updating the Service
+
+To install or apply changes to `scripts/nila.service`:
+```bash
+chmod +x scripts/install_service.sh
+./scripts/install_service.sh
+```
+
+---
+
 ## 🔧 Raspberry Pi Audio Fix
 
 If running on Raspberry Pi and encountering ALSA errors (`Invalid card 'card'`):
@@ -101,4 +139,4 @@ chmod +x scripts/fix_pi_audio.sh
 
 ## 📘 Comprehensive Architecture & Developer Guide
 
-For detailed technical architecture, execution flow diagrams, and a developer roadmap on where to add future code (Next.js/Flutter frontend, Agent Workflows, Camera Vision), refer to **[DEVELOPER_GUIDE.md](file:///home/hp/Desktop/robuverse-internal/NILA-V2/DEVELOPER_GUIDE.md)**.
+For detailed technical architecture, execution flow diagrams, and a developer roadmap on where to add future code (Next.js/Flutter frontend, Agent Workflows, Camera Vision), refer to **[DEVELOPER_GUIDE.md](file:///home/learnlogicai/nilaprod/NILA-V2/DEVELOPER_GUIDE.md)**.

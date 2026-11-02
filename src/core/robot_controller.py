@@ -28,6 +28,12 @@ class RobotController:
             'start_time': None
         }
         
+        # Auto-connect Bluetooth speaker if configured
+        bt_mac = getattr(settings, "BT_SPEAKER_MAC", "41:42:84:29:F2:CE")
+        if bt_mac:
+            import os
+            os.system(f"echo 'connect {bt_mac}' | bluetoothctl > /dev/null 2>&1")
+
         # Initialize services
         self.text_to_speech = TTSService(settings)
         self.speech_recognizer = SpeechRecognizer(settings)
@@ -100,7 +106,17 @@ class RobotController:
             self.logger.info("📡 ENABLE_REALTIME_MODE=True: Launching Gemini 3.1 Live Engine...")
             from src.services.realtime.gemini_live_provider import GeminiLiveProvider
             self.live_provider = GeminiLiveProvider(self.settings)
-            await self.live_provider.start_live_session()
+            while self.is_running and self.conversation_active:
+                try:
+                    await self.live_provider.start_live_session()
+                except Exception as e:
+                    self.logger.error(f"❌ Gemini Live encountered error: {e}")
+                
+                if not self.is_running or not self.conversation_active:
+                    break
+                
+                self.logger.info("🔄 Gemini Live WebSocket session closed. Auto-reconnecting in 2 seconds...")
+                await asyncio.sleep(2)
             return
 
         # Step 3: Speak greeting
@@ -209,6 +225,7 @@ class RobotController:
                 await self.event_bus.publish(TTSPlaybackEvent(status="started"))
                 await self.text_to_speech.speak(ai_response)
                 await self.event_bus.publish(TTSPlaybackEvent(status="finished"))
+                await asyncio.sleep(1.0)  # Bluetooth speaker buffer settling cooldown
                 
             else:
                 self.stats['llm_failures'] += 1
@@ -298,7 +315,7 @@ class RobotController:
         
         self.logger.info(f"Speaking: {greeting}")
         await self.text_to_speech.speak(greeting)
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.0)
     
     def stop(self):
         """Stop the robot immediately"""

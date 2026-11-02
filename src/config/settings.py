@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     GEMINI_LIVE_SILENCE_CHUNKS: int = Field(default=18, env="GEMINI_LIVE_SILENCE_CHUNKS") # 18 chunks ~= 1.15s silence before cutoff
     GEMINI_LIVE_MIN_SPEECH_CHUNKS: int = Field(default=3, env="GEMINI_LIVE_MIN_SPEECH_CHUNKS") # 3 chunks ~= 180ms min speech duration
     GEMINI_LIVE_DEFAULT_THRESHOLD: int = Field(default=150, env="GEMINI_LIVE_DEFAULT_THRESHOLD")
-    GEMINI_LIVE_COOLDOWN: float = Field(default=0.8, env="GEMINI_LIVE_COOLDOWN")
+    GEMINI_LIVE_COOLDOWN: float = Field(default=1.8, env="GEMINI_LIVE_COOLDOWN")
     GEMINI_LIVE_FILTER_TYPE: str = Field(default="none", env="GEMINI_LIVE_FILTER_TYPE") # none, cyber_robot, deep_beast, radio_intercom, flanger_chassis
     GEMINI_LIVE_ROBOTIC_EFFECT: bool = Field(default=False, env="GEMINI_LIVE_ROBOTIC_EFFECT")
     GEMINI_LIVE_SPEED_RATIO: float = Field(default=1.0, env="GEMINI_LIVE_SPEED_RATIO") # 1.0 = Normal speed
@@ -139,6 +139,11 @@ CRITICAL RULES FOR VOICE & TEXT OUTPUT:
     AUDIO_SAMPLE_RATE: int = Field(default=16000, env="AUDIO_SAMPLE_RATE")  # Hz (Google STT requires 16kHz)
     AUDIO_CHANNELS: int = Field(default=1, env="AUDIO_CHANNELS")  # Mono
     AUDIO_DEVICE_NAME: str = Field(default="alsa_input.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.analog-mono", env="AUDIO_DEVICE_NAME")  # Specific Pulse/PipeWire source node
+    
+    # Bluetooth Speaker Settings
+    BT_AUTO_CONNECT: bool = Field(default=True, env="BT_AUTO_CONNECT")
+    BT_SPEAKER_MAC: str = Field(default="41:42:84:29:F2:CE", env="BT_SPEAKER_MAC")
+    BT_SPEAKER_NAME: str = Field(default="3.0BT", env="BT_SPEAKER_NAME")
     
     # Vision & Camera Settings (Multiprocessing Face Detection)
     ENABLE_VISION: bool = Field(default=True, env="ENABLE_VISION")

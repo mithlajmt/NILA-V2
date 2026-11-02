@@ -40,7 +40,10 @@ class GeminiLiveProvider:
         self.model_id = getattr(settings, "GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
         self.is_running = False
         self.is_speaking = False
+        self.user_speaking = False
+        self.is_recording_allowed = False  # Strict Half-Duplex gate: muted until ready for user input
         self.session = None
+        self.calibrated_threshold = None
 
         # Audio Configuration
         self.input_rate = 16000
@@ -50,7 +53,7 @@ class GeminiLiveProvider:
         self.default_threshold = getattr(settings, "GEMINI_LIVE_DEFAULT_THRESHOLD", 150)
         self.min_speech_chunks = getattr(settings, "GEMINI_LIVE_MIN_SPEECH_CHUNKS", 3)
         self.trailing_silence_limit = getattr(settings, "GEMINI_LIVE_SILENCE_CHUNKS", 18)
-        self.cooldown_after_speech = getattr(settings, "GEMINI_LIVE_COOLDOWN", 0.8)
+        self.cooldown_after_speech = float(getattr(settings, "GEMINI_LIVE_COOLDOWN", 1.8))
 
         # Audio DSP & Filter Parameters
         self.filter_type = getattr(settings, "GEMINI_LIVE_FILTER_TYPE", "none").lower()
@@ -59,10 +62,16 @@ class GeminiLiveProvider:
         self.pitch_factor = float(getattr(settings, "GEMINI_LIVE_PITCH_FACTOR", 1.0))
         self.modulation_freq = float(getattr(settings, "GEMINI_LIVE_MODULATION_FREQ", 55.0))
         self.delay_buffer = np.zeros(140, dtype=np.float32)
+        self.filter_phase = 0.0
 
         # Hardware & EventBus
         self.event_bus = EventBus()
         self.serial_ctrl = SerialController(settings)
+
+        # Auto-connect Bluetooth speaker if configured
+        bt_mac = getattr(settings, "BT_SPEAKER_MAC", "41:42:84:29:F2:CE")
+        if bt_mac:
+            os.system(f"echo 'connect {bt_mac}' | bluetoothctl > /dev/null 2>&1")
 
         # Smart Hardware Audio Device Detection (Strictly bypass webcam mics)
         self.mic_device_index = self._find_audio_device(is_input=True)
@@ -127,10 +136,11 @@ class GeminiLiveProvider:
             num_samples = len(samples)
 
             if filter_mode == "cyber_robot":
-                # Metallic Sine Wave Modulation
-                t = np.arange(num_samples) / float(self.output_rate)
+                # Metallic Sine Wave Modulation with continuous phase to eliminate chunk crackle
+                t = (np.arange(num_samples) + self.filter_phase) / float(self.output_rate)
                 carrier = np.sin(2 * np.pi * self.modulation_freq * t)
                 samples = samples * (0.85 + 0.15 * carrier)
+                self.filter_phase = (self.filter_phase + num_samples) % 1000000.0
 
             elif filter_mode == "deep_beast":
                 # Deep Pitch Shift
@@ -204,7 +214,21 @@ class GeminiLiveProvider:
 
         system_prompt = getattr(self.settings, "GEMINI_LIVE_SYSTEM_PROMPT", "") or self.settings.LLM_SYSTEM_PROMPT
         voice_name = getattr(self.settings, "GEMINI_LIVE_VOICE", "Puck")
-        gemini_tools = ToolRegistry.get_gemini_tools()
+        expo_mode = getattr(self.settings, "EXPO_MODE", True)
+        gemini_tools = ToolRegistry.get_gemini_tools(expo_mode=expo_mode)
+
+        # Inject real-time timestamp into system prompt so Gemini knows current time without calling tools
+        try:
+            from datetime import datetime
+            now_str = datetime.now().strftime("%A, %d %B %Y, %I:%M %p")
+            system_prompt = f"{system_prompt}\n[Real-time Context: Current date and time is {now_str} IST, Kerala]"
+        except Exception:
+            pass
+
+        if gemini_tools:
+            self.logger.info("🛠️ Gemini Live Tools registered.")
+        else:
+            self.logger.info("⚡ Zero-Tool Pure Voice Mode: Function-calling disabled for instant, loop-free conversation.")
 
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
@@ -223,29 +247,35 @@ class GeminiLiveProvider:
         audio_queue = asyncio.Queue()
         playback_queue = asyncio.Queue()
 
-        # Noise calibration over 1 second
-        noise_samples = []
-        def calibrate_callback(indata, frames, time_info, status):
-            rms = self._calculate_rms(indata.tobytes())
-            noise_samples.append(rms)
+        # Noise calibration over 1 second (runs on first startup only)
+        if self.calibrated_threshold is None:
+            noise_samples = []
+            def calibrate_callback(indata, frames, time_info, status):
+                rms = self._calculate_rms(indata.tobytes())
+                noise_samples.append(rms)
 
-        with sd.InputStream(device=self.mic_device_index, samplerate=self.input_rate, channels=self.channels, dtype='int16', callback=calibrate_callback, blocksize=self.chunk_size):
-            await asyncio.sleep(1.0)
+            with sd.InputStream(device=self.mic_device_index, samplerate=self.input_rate, channels=self.channels, dtype='int16', callback=calibrate_callback, blocksize=self.chunk_size):
+                await asyncio.sleep(1.0)
 
-        avg_noise = sum(noise_samples) / max(1, len(noise_samples))
-        # Adaptive threshold: if ambient noise is low, adapt smoothly without locking to high threshold
-        if avg_noise < 40:
-            speech_threshold = max(35, int(avg_noise * 1.8 + 20))
-        else:
-            speech_threshold = max(self.default_threshold, int(avg_noise * 1.5 + 30))
-        self.logger.info(f"✅ Noise Calibration Complete! Baseline: {int(avg_noise)} | Speech Threshold: {speech_threshold}")
+            avg_noise = sum(noise_samples) / max(1, len(noise_samples))
+            if avg_noise < 40:
+                self.calibrated_threshold = max(35, int(avg_noise * 1.8 + 20))
+            else:
+                self.calibrated_threshold = max(self.default_threshold, int(avg_noise * 1.5 + 30))
+            self.logger.info(f"✅ Noise Calibration Complete! Baseline: {int(avg_noise)} | Speech Threshold: {self.calibrated_threshold}")
+
+        speech_threshold = self.calibrated_threshold
 
         def mic_callback(indata, frames, time_info, status):
             if status:
                 self.logger.warning(f"Mic input status: {status}")
-            if not self.is_speaking:
-                pcm_bytes = indata.tobytes()
-                loop.call_soon_threadsafe(audio_queue.put_nowait, pcm_bytes)
+            # Strict Half-Duplex Echo Prevention:
+            # Completely discard microphone audio while playing voice, executing tools,
+            # awaiting response, or in Bluetooth buffer settling cooldown.
+            if not self.is_recording_allowed or self.is_speaking:
+                return
+            pcm_bytes = indata.tobytes()
+            loop.call_soon_threadsafe(audio_queue.put_nowait, pcm_bytes)
 
         try:
             async with client.aio.live.connect(model=self.model_id, config=config) as session:
@@ -258,25 +288,39 @@ class GeminiLiveProvider:
                 self.logger.info(f"🔊 Speaker Playback Rate: {playback_rate} Hz (Speed Ratio: {self.speed_ratio})")
 
                 async def player_worker():
-                    with sd.OutputStream(device=self.speaker_device_index, samplerate=playback_rate, channels=self.channels, dtype='int16') as out_stream:
-                        while self.is_running:
-                            item = await playback_queue.get()
-                            if item is None:
-                                break
-                            audio_bytes, intensity = item
-                            await self.event_bus.publish(SpeechAmplitudeEvent(intensity=intensity))
-                            if self.serial_ctrl.is_connected:
-                                self.serial_ctrl.send_jaw_intensity(intensity)
-                            audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
-                            audio_np = self._apply_robotic_voice_filter(audio_np)
-                            await asyncio.to_thread(out_stream.write, audio_np)
-                            playback_queue.task_done()
+                    try:
+                        with sd.OutputStream(device=self.speaker_device_index, samplerate=playback_rate, channels=self.channels, dtype='int16') as out_stream:
+                            while self.is_running:
+                                try:
+                                    item = await playback_queue.get()
+                                except asyncio.CancelledError:
+                                    break
+                                if item is None:
+                                    playback_queue.task_done()
+                                    break
+                                
+                                # Tiny jitter pre-buffer on start of turn to prevent Bluetooth buffer underruns
+                                if not self.is_speaking and playback_queue.qsize() < 2:
+                                    await asyncio.sleep(0.08)
+
+                                self.is_speaking = True
+                                self.is_recording_allowed = False
+                                audio_bytes, intensity = item
+                                await self.event_bus.publish(SpeechAmplitudeEvent(intensity=intensity))
+                                if self.serial_ctrl.is_connected:
+                                    self.serial_ctrl.send_jaw_intensity(intensity)
+                                audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
+                                audio_np = self._apply_robotic_voice_filter(audio_np)
+                                await asyncio.to_thread(out_stream.write, audio_np)
+                                playback_queue.task_done()
+                    except Exception as pe:
+                        self.logger.debug(f"Audio output player stream closed cleanly: {pe}")
 
                 player_task = asyncio.create_task(player_worker())
 
                 # Task 2: Audio Stream Sender Loop with Explicit Client Turn Content Commit
                 async def send_mic_audio():
-                    user_speaking = False
+                    self.user_speaking = False
                     consecutive_speech_chunks = 0
                     silence_count = 0
                     turn_pcm_data = bytearray()
@@ -291,8 +335,8 @@ class GeminiLiveProvider:
                     ):
                         while self.is_running:
                             pcm_bytes = await audio_queue.get()
-                            if self.is_speaking:
-                                user_speaking = False
+                            if not self.is_recording_allowed or self.is_speaking:
+                                self.user_speaking = False
                                 consecutive_speech_chunks = 0
                                 silence_count = 0
                                 turn_pcm_data.clear()
@@ -304,15 +348,15 @@ class GeminiLiveProvider:
                                 silence_count = 0
                                 turn_pcm_data.extend(pcm_bytes)
 
-                                if consecutive_speech_chunks >= self.min_speech_chunks and not user_speaking:
-                                    user_speaking = True
+                                if consecutive_speech_chunks >= self.min_speech_chunks and not self.user_speaking:
+                                    self.user_speaking = True
                                     print(f"\n🎤 [LISTENING...] Speech detected! (Volume RMS: {int(rms)} > Threshold: {speech_threshold})", flush=True)
                             else:
-                                if user_speaking:
+                                if self.user_speaking:
                                     silence_count += 1
                                     turn_pcm_data.extend(pcm_bytes)
                                     if silence_count >= self.trailing_silence_limit:
-                                        user_speaking = False
+                                        self.user_speaking = False
                                         consecutive_speech_chunks = 0
                                         silence_count = 0
 
@@ -324,6 +368,15 @@ class GeminiLiveProvider:
                                             print("\n" + "="*60)
                                             print(f"🎤 [USER VOICE RECORDED]: Sent {len(pcm_payload)} bytes audio to Gemini")
                                             print("="*60)
+
+                                            # Immediately lock recording while waiting for Gemini to think and respond
+                                            self.is_recording_allowed = False
+                                            while not audio_queue.empty():
+                                                try:
+                                                    audio_queue.get_nowait()
+                                                except asyncio.QueueEmpty:
+                                                    break
+
                                             turn_content = types.Content(
                                                 role="user",
                                                 parts=[types.Part.from_bytes(data=pcm_payload, mime_type="audio/pcm")]
@@ -342,6 +395,7 @@ class GeminiLiveProvider:
                             
                             # Handle Gemini Live Tool / Function Calls
                             if hasattr(response, "tool_call") and response.tool_call:
+                                self.is_recording_allowed = False
                                 for call in response.tool_call.function_calls:
                                     fn_name = call.name
                                     fn_args = dict(call.args) if hasattr(call, "args") and call.args else {}
@@ -379,6 +433,7 @@ class GeminiLiveProvider:
 
                             model_turn = server_content.model_turn
                             if model_turn is not None:
+                                self.is_recording_allowed = False
                                 if not self.is_speaking:
                                     self.is_speaking = True
                                     current_model_text.clear()
@@ -415,6 +470,7 @@ class GeminiLiveProvider:
                                 await self.event_bus.publish(StateChangeEvent(old_state="SPEAKING", new_state="LISTENING", reason="Gemini Turn Complete"))
                                 
                                 # Post-speech cooldown: Purging mic queue and buffer
+                                # Allow Bluetooth speaker buffer + acoustic room reverberation to settle completely
                                 await asyncio.sleep(self.cooldown_after_speech)
                                 while not audio_queue.empty():
                                     try:
@@ -422,10 +478,14 @@ class GeminiLiveProvider:
                                     except asyncio.QueueEmpty:
                                         break
                                 self.is_speaking = False
+                                self.filter_phase = 0.0
+                                self.is_recording_allowed = True
+                                self.logger.info("🎤 Listening re-enabled for user input")
                                 break
 
                 # Send initial turn to trigger Nila's startup greeting
                 try:
+                    self.is_recording_allowed = False
                     greeting_prompt = "Hello! Briefly welcome the user in 1 short sentence as Nila."
                     initial_turn = types.Content(
                         role="user",
@@ -434,14 +494,42 @@ class GeminiLiveProvider:
                     await session.send_client_content(turns=[initial_turn], turn_complete=True)
                 except Exception as ge:
                     self.logger.warning(f"Could not send startup greeting: {ge}")
+                    self.is_recording_allowed = True
+
+                session_start_time = time.time()
+
+                async def session_watchdog():
+                    """
+                    Proactively refresh Gemini Live WebSocket after 8 minutes
+                    to avoid Google's hard 10-15 minute GoAway session limit.
+                    Only cycles when NILA is completely idle (not speaking, no user speech).
+                    """
+                    while self.is_running:
+                        await asyncio.sleep(5)
+                        elapsed = time.time() - session_start_time
+                        if elapsed > 480:  # 8 minutes
+                            if not self.is_speaking and not self.user_speaking and audio_queue.empty() and playback_queue.empty():
+                                self.logger.info("🔄 Proactively refreshing Gemini Live session (8-min lease renewal)...")
+                                break
+
+                tasks = [
+                    asyncio.create_task(send_mic_audio()),
+                    asyncio.create_task(receive_response_audio()),
+                    asyncio.create_task(session_watchdog())
+                ]
 
                 try:
-                    await asyncio.gather(send_mic_audio(), receive_response_audio())
-                except asyncio.CancelledError:
-                    self.logger.info("⏸️ Gemini Live session cancelled (Shutdown requested).")
+                    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    for p in pending:
+                        p.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
                 finally:
-                    player_task.cancel()
+                    # Cleanly close player without aborting mid-write
                     await playback_queue.put(None)
+                    try:
+                        await asyncio.wait_for(player_task, timeout=1.5)
+                    except Exception:
+                        player_task.cancel()
 
         except asyncio.CancelledError:
             self.logger.info("⏸️ Gemini Live WebSocket session closed.")
@@ -450,22 +538,20 @@ class GeminiLiveProvider:
         finally:
             self.is_running = False
             self.is_speaking = False
-            try:
-                sd.stop()
-            except Exception:
-                pass
+            self.user_speaking = False
+            self.is_recording_allowed = False
             if self.serial_ctrl.is_connected:
                 self.serial_ctrl.send_jaw_intensity(0)
             self.logger.info("👋 Gemini Live WebSocket Session Ended.")
+            # Grace period for OS/ALSA to release sound hardware handles
+            await asyncio.sleep(0.5)
 
     def stop(self):
         """Stop the live session immediately"""
         self.is_running = False
         self.is_speaking = False
-        try:
-            sd.stop()
-        except Exception:
-            pass
+        self.user_speaking = False
+        self.is_recording_allowed = False
         if hasattr(self, "_active_task") and self._active_task and not self._active_task.done():
             try:
                 self._active_task.cancel()
