@@ -88,6 +88,39 @@ python3 scripts/find_arduino.py
 
 ---
 
+## 🌐 Web Control Center & Operator Dashboard
+
+NILA-V2 includes a built-in, zero-latency Web Dashboard and Remote Control App accessible over Wi-Fi from any smartphone, tablet, or laptop.
+
+### 📱 How to Access
+Once Nila is running (or via `nila.service`), simply open a browser on any device connected to the same Wi-Fi:
+```text
+http://<RaspberryPi-IP>:5000
+```
+*(On the Pi itself, open `http://localhost:5000`)*
+
+### 🌟 Dashboard Features
+1. **👁️ Live Vision HUD**:
+   - Streams live camera video directly in browser (`/stream.mjpg`) with real-time OpenCV Deep Neural Network (SSD) face bounding boxes, confidence ratings, and latency.
+   - Zero-copy shared memory architecture ensures 0ms delay on the audio or serial loop.
+2. **💬 Live Dialogue & Speech Stream**:
+   - Real-time conversation chat bubbles showing visitor speech input vs Nila's spoken responses.
+   - Dynamic animated speech intensity equalizer visualizer.
+3. **🔊 Digital Sound Booster Slider**:
+   - Real-time digital gain slider (1.0x to 2.0x / up to +100% boost) to amplify Nila's voice for loud exhibition environments without audio distortion.
+   - Quick presets: *Natural (1.0x)*, *Expo Boost (1.3x)*, *Max Loud (1.6x)*.
+4. **🎮 Tactile Gesture Remote**:
+   - Quick buttons to trigger robot physical actions:
+     - 👋 **Raise Hand** (Wave greeting)
+     - 🫳 **Lower Hand** (Rest)
+     - 🗣️ **Test Jaw** (Cycles mouth servo)
+     - 😊 **Smile Nod**
+     - 🔄 **Reconnect Gemini Session** (Cycles live session cleanly)
+5. **📡 Hardware Telemetry**:
+   - Real-time Raspberry Pi SoC Temperature (°C), system uptime, Bluetooth speaker connection state (`3.0BT`), and Arduino USB serial link status.
+
+---
+
 ## ⚡ Auto-Start & Background Service Guide (`nila.service`)
 
 NILA is completely set up and configured to run automatically in the background as a `systemd` service (`nila.service`) whenever the Raspberry Pi powers on or is plugged into a charger.

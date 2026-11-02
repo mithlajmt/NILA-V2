@@ -36,6 +36,9 @@ class VisionService(BaseWorker):
         self.process: Optional[mp.Process] = None
         self.stop_event: Optional[mp.Event] = None
         self.output_queue: Optional[mp.Queue] = None
+        self.frame_buffer = None
+        self.frame_len = None
+        self.frame_lock = None
         self.consumer_task: Optional[asyncio.Task] = None
         self.is_person_present: bool = False
 
@@ -57,6 +60,9 @@ class VisionService(BaseWorker):
 
         self.stop_event = mp.Event()
         self.output_queue = mp.Queue()
+        self.frame_buffer = mp.Array('B', 150000)
+        self.frame_len = mp.Value('i', 0)
+        self.frame_lock = mp.Lock()
 
         self.process = mp.Process(
             target=run_face_detector_loop,
@@ -69,7 +75,10 @@ class VisionService(BaseWorker):
                 self.height,
                 self.fps,
                 self.cooldown,
-                self.cascade_path
+                self.cascade_path,
+                self.frame_buffer,
+                self.frame_len,
+                self.frame_lock
             ),
             daemon=True
         )
@@ -145,6 +154,19 @@ class VisionService(BaseWorker):
                 self.process.terminate()
 
         self.logger.info("✅ Vision Service stopped")
+
+    def get_latest_jpeg(self) -> Optional[bytes]:
+        """Fetch latest JPEG frame from shared memory buffer"""
+        if self.frame_buffer is None or self.frame_len is None or self.frame_lock is None:
+            return None
+        try:
+            with self.frame_lock:
+                sz = self.frame_len.value
+                if sz > 0:
+                    return bytes(self.frame_buffer[:sz])
+        except Exception:
+            pass
+        return None
 
     def cleanup(self):
         """Cleanup worker resources"""

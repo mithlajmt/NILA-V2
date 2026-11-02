@@ -65,6 +65,10 @@ class RobotController:
         from src.services.hardware.serial_controller import SerialController
         self.serial_controller = SerialController(settings)
 
+        # Initialize Web Dashboard & Telemetry Server
+        from src.services.web.web_service import WebService
+        self.web_service = WebService(settings, self)
+
         # Initialize NilaRuntime Manager
         self.runtime = NilaRuntime(settings)
         self.event_bus = self.runtime.event_bus
@@ -98,6 +102,10 @@ class RobotController:
         # Start Vision Service in background
         if hasattr(self, 'vision_service') and self.vision_service:
             self.vision_service.start()
+
+        # Start Web Dashboard in background daemon thread
+        if hasattr(self, 'web_service') and self.web_service:
+            self.web_service.start()
 
         self.logger.info("🚀 Robot starting Event-Driven Runtime Loop...")
         
@@ -356,6 +364,9 @@ class RobotController:
         
         if hasattr(self, 'vision_service') and self.vision_service:
             self.vision_service.cleanup()
+
+        if hasattr(self, 'web_service') and self.web_service:
+            self.web_service.stop()
 
         if hasattr(self, 'serial_controller') and self.serial_controller:
             self.serial_controller.close()

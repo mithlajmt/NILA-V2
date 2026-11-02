@@ -23,7 +23,7 @@ import logging
 from typing import Optional
 
 from src.core.event_bus import EventBus
-from src.core.events import SpeechAmplitudeEvent, StateChangeEvent, BrainLLMResponseEvent, TTSPlaybackEvent
+from src.core.events import SpeechAmplitudeEvent, StateChangeEvent, BrainLLMResponseEvent, TTSPlaybackEvent, STTTranscriptEvent
 from src.services.hardware.serial_controller import SerialController
 from src.tools.registry import ToolRegistry
 import src.tools.built_in_tools
@@ -63,6 +63,7 @@ class GeminiLiveProvider:
         self.modulation_freq = float(getattr(settings, "GEMINI_LIVE_MODULATION_FREQ", 55.0))
         self.delay_buffer = np.zeros(140, dtype=np.float32)
         self.filter_phase = 0.0
+        self.volume_gain = float(getattr(settings, "GEMINI_LIVE_VOLUME_GAIN", 1.3))
 
         # Hardware & EventBus
         self.event_bus = EventBus()
@@ -311,6 +312,10 @@ class GeminiLiveProvider:
                                     self.serial_ctrl.send_jaw_intensity(intensity)
                                 audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
                                 audio_np = self._apply_robotic_voice_filter(audio_np)
+                                gain = getattr(self, "volume_gain", 1.0)
+                                if gain != 1.0:
+                                    boosted = audio_np.astype(np.float32) * gain
+                                    audio_np = np.clip(boosted, -32767, 32767).astype(np.int16)
                                 await asyncio.to_thread(out_stream.write, audio_np)
                                 playback_queue.task_done()
                     except Exception as pe:
@@ -381,6 +386,7 @@ class GeminiLiveProvider:
                                                 role="user",
                                                 parts=[types.Part.from_bytes(data=pcm_payload, mime_type="audio/pcm")]
                                             )
+                                            await self.event_bus.publish(STTTranscriptEvent(text="🗣️ Spoken voice input (Real-time Audio)"))
                                             await session.send_client_content(turns=[turn_content], turn_complete=True)
                                 else:
                                     consecutive_speech_chunks = 0

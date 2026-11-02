@@ -11,7 +11,7 @@ import sys
 import logging
 from multiprocessing import Event as MPEvent, Queue
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Any
 
 
 def find_dnn_model_files() -> Tuple[Optional[str], Optional[str]]:
@@ -57,7 +57,10 @@ def run_face_detector_loop(
     height: int = 240,
     target_fps: int = 5,
     cooldown_seconds: float = 2.5,
-    cascade_path: Optional[str] = None
+    cascade_path: Optional[str] = None,
+    frame_buffer: Optional[Any] = None,
+    frame_len: Optional[Any] = None,
+    frame_lock: Optional[Any] = None
 ):
     """
     Entry point for the isolated camera process.
@@ -235,6 +238,31 @@ def run_face_detector_loop(
                     "timestamp": now,
                     "boxes": []
                 })
+
+        # Update shared memory frame buffer for web streaming preview
+        if frame_buffer is not None and frame_len is not None and frame_lock is not None:
+            try:
+                draw_frame = frame.copy()
+                for (fx, fy, fw, fh) in valid_faces:
+                    box_color = (0, 255, 70) if is_currently_detected else (0, 215, 255)
+                    label = "FACE CONFIRMED" if is_currently_detected else "VERIFYING..."
+                    cv2.rectangle(draw_frame, (fx, fy), (fx + fw, fy + fh), box_color, 2)
+                    cv2.rectangle(draw_frame, (fx, max(0, fy - 18)), (fx + 110, fy), box_color, -1)
+                    cv2.putText(draw_frame, label, (fx + 3, max(12, fy - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
+
+                hud_color = (0, 255, 70) if is_currently_detected else (180, 180, 180)
+                cv2.putText(draw_frame, f"Faces: {face_count} | {latency_ms:.0f}ms", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.45, hud_color, 1)
+
+                ret_enc, jpeg_data = cv2.imencode(".jpg", draw_frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
+                if ret_enc:
+                    raw_b = jpeg_data.tobytes()
+                    sz = len(raw_b)
+                    if sz <= len(frame_buffer):
+                        with frame_lock:
+                            frame_buffer[:sz] = raw_b
+                            frame_len.value = sz
+            except Exception as fe:
+                logger.debug(f"Frame preview encode error: {fe}")
 
         # Sleep remaining time to maintain target FPS without wasting CPU
         cycle_time = time.time() - cycle_start

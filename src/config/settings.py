@@ -157,6 +157,12 @@ CRITICAL RULES FOR VOICE & TEXT OUTPUT:
         env="VISION_CASCADE_PATH"
     )
 
+    # Web Dashboard & Remote Control Settings
+    ENABLE_WEB_DASHBOARD: bool = Field(default=True, env="ENABLE_WEB_DASHBOARD")
+    WEB_PORT: int = Field(default=5000, env="WEB_PORT")
+    WEB_HOST: str = Field(default="0.0.0.0", env="WEB_HOST")
+    GEMINI_LIVE_VOLUME_GAIN: float = Field(default=1.3, env="GEMINI_LIVE_VOLUME_GAIN")
+
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     LOG_FILE: str = Field(default="data/logs/robot.log", env="LOG_FILE")
