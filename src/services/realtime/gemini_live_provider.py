@@ -64,6 +64,47 @@ class GeminiLiveProvider:
         self.event_bus = EventBus()
         self.serial_ctrl = SerialController(settings)
 
+        # Smart Hardware Audio Device Detection (Strictly bypass webcam mics)
+        self.mic_device_index = self._find_audio_device(is_input=True)
+        self.speaker_device_index = self._find_audio_device(is_input=False)
+
+    def _find_audio_device(self, is_input: bool = True):
+        """
+        Audio Device Selector:
+        - Microphone (is_input=True): Uses the active HD camera microphone (Device 0).
+        - Speaker (is_input=False): Uses PulseAudio ('pulse' / USB soundcard) for robot voice playback.
+        """
+        try:
+            devices = sd.query_devices()
+            preferred_name = getattr(self.settings, "AUDIO_DEVICE_NAME", "") or ""
+
+            # 1. If explicit device name configured and not "default"
+            if preferred_name and preferred_name.lower() != "default":
+                for idx, dev in enumerate(devices):
+                    channels = dev['max_input_channels'] if is_input else dev['max_output_channels']
+                    if channels > 0 and preferred_name.lower() in dev['name'].lower():
+                        role = "Microphone" if is_input else "Speaker"
+                        self.logger.info(f"🎯 Matched preferred {role}: Device {idx} ({dev['name']})")
+                        return idx
+
+            if is_input:
+                # Select the HD Camera microphone (Device 0) where the user actually speaks
+                for idx, dev in enumerate(devices):
+                    if dev['max_input_channels'] > 0 and "camera" in dev['name'].lower():
+                        self.logger.info(f"🎤 Selected Microphone: Device {idx} ({dev['name']})")
+                        return idx
+                return 0
+            else:
+                # Select the USB soundcard / pulse speaker for speech playback
+                for idx, dev in enumerate(devices):
+                    if dev['max_output_channels'] > 0 and dev['name'].lower().startswith("pulse"):
+                        self.logger.info(f"🔊 Selected Speaker: Device {idx} ({dev['name']})")
+                        return idx
+                return "pulse"
+        except Exception as e:
+            self.logger.warning(f"Error querying audio devices: {e}")
+            return 0 if is_input else "pulse"
+
     def _apply_robotic_voice_filter(self, audio_np: np.ndarray) -> np.ndarray:
         """
         Modular Real-Time Audio Filter Engine.
@@ -188,11 +229,15 @@ class GeminiLiveProvider:
             rms = self._calculate_rms(indata.tobytes())
             noise_samples.append(rms)
 
-        with sd.InputStream(samplerate=self.input_rate, channels=self.channels, dtype='int16', callback=calibrate_callback, blocksize=self.chunk_size):
+        with sd.InputStream(device=self.mic_device_index, samplerate=self.input_rate, channels=self.channels, dtype='int16', callback=calibrate_callback, blocksize=self.chunk_size):
             await asyncio.sleep(1.0)
 
         avg_noise = sum(noise_samples) / max(1, len(noise_samples))
-        speech_threshold = max(self.default_threshold, int(avg_noise * 1.5 + 30))
+        # Adaptive threshold: if ambient noise is low, adapt smoothly without locking to high threshold
+        if avg_noise < 40:
+            speech_threshold = max(35, int(avg_noise * 1.8 + 20))
+        else:
+            speech_threshold = max(self.default_threshold, int(avg_noise * 1.5 + 30))
         self.logger.info(f"✅ Noise Calibration Complete! Baseline: {int(avg_noise)} | Speech Threshold: {speech_threshold}")
 
         def mic_callback(indata, frames, time_info, status):
@@ -213,7 +258,7 @@ class GeminiLiveProvider:
                 self.logger.info(f"🔊 Speaker Playback Rate: {playback_rate} Hz (Speed Ratio: {self.speed_ratio})")
 
                 async def player_worker():
-                    with sd.OutputStream(samplerate=playback_rate, channels=self.channels, dtype='int16') as out_stream:
+                    with sd.OutputStream(device=self.speaker_device_index, samplerate=playback_rate, channels=self.channels, dtype='int16') as out_stream:
                         while self.is_running:
                             item = await playback_queue.get()
                             if item is None:
@@ -237,6 +282,7 @@ class GeminiLiveProvider:
                     turn_pcm_data = bytearray()
 
                     with sd.InputStream(
+                        device=self.mic_device_index,
                         samplerate=self.input_rate,
                         channels=self.channels,
                         dtype='int16',
@@ -260,6 +306,7 @@ class GeminiLiveProvider:
 
                                 if consecutive_speech_chunks >= self.min_speech_chunks and not user_speaking:
                                     user_speaking = True
+                                    print(f"\n🎤 [LISTENING...] Speech detected! (Volume RMS: {int(rms)} > Threshold: {speech_threshold})", flush=True)
                             else:
                                 if user_speaking:
                                     silence_count += 1

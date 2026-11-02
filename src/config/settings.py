@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     GEMINI_LIVE_PITCH_FACTOR: float = Field(default=1.0, env="GEMINI_LIVE_PITCH_FACTOR")
     GEMINI_LIVE_MODULATION_FREQ: float = Field(default=55.0, env="GEMINI_LIVE_MODULATION_FREQ")
     GEMINI_LIVE_SYSTEM_PROMPT: str = Field(
-        default="You are Torres, a cool, energetic male robot built by Robuverse in Kerala. Speak at a fast, crisp, clear, and energetic pace. Speak naturally in Malayalam or English (Manglish). Keep voice spoken responses brief (1 sentence). When executing tools to draft or send emails/messages, ALWAYS expand brief spoken user instructions into formal, highly professional, polite, and complete emails with clear subject lines, proper salutations (e.g. 'Dear [Name],'), structured context, and formal sign-offs. Never state that you are an AI model.",
+        default="You are Torres, a cool, energetic male robot built by Robuverse in Kerala. Speak at a fast, crisp, clear, and energetic pace. Speak naturally in Malayalam or English (Manglish). Keep responses brief (1 sentence). Never state that you are an AI model.",
         env="GEMINI_LIVE_SYSTEM_PROMPT"
     )
 
@@ -130,7 +130,7 @@ CRITICAL RULES FOR VOICE & TEXT OUTPUT:
     ELEVENLABS_MODEL_ID: str = Field(default="eleven_v3", env="ELEVENLABS_MODEL_ID")
 
     # Hardware / Serial Settings
-    SERIAL_PORT: str = Field(default="/dev/ttyUSB0", env="SERIAL_PORT")
+    SERIAL_PORT: str = Field(default="/dev/ttyACM0", env="SERIAL_PORT")
     SERIAL_BAUD: int = Field(default=115200, env="SERIAL_BAUD")
     SERVO_MIN_ANGLE: int = Field(default=90, env="SERVO_MIN_ANGLE")
     SERVO_MAX_ANGLE: int = Field(default=130, env="SERVO_MAX_ANGLE")
@@ -140,6 +140,18 @@ CRITICAL RULES FOR VOICE & TEXT OUTPUT:
     AUDIO_CHANNELS: int = Field(default=1, env="AUDIO_CHANNELS")  # Mono
     AUDIO_DEVICE_NAME: str = Field(default="alsa_input.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.analog-mono", env="AUDIO_DEVICE_NAME")  # Specific Pulse/PipeWire source node
     
+    # Vision & Camera Settings (Multiprocessing Face Detection)
+    ENABLE_VISION: bool = Field(default=True, env="ENABLE_VISION")
+    VISION_CAMERA_INDEX: int = Field(default=0, env="VISION_CAMERA_INDEX")
+    VISION_FRAME_WIDTH: int = Field(default=320, env="VISION_FRAME_WIDTH")
+    VISION_FRAME_HEIGHT: int = Field(default=240, env="VISION_FRAME_HEIGHT")
+    VISION_FPS: int = Field(default=5, env="VISION_FPS")
+    VISION_COOLDOWN: float = Field(default=2.5, env="VISION_COOLDOWN")
+    VISION_CASCADE_PATH: str = Field(
+        default="/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+        env="VISION_CASCADE_PATH"
+    )
+
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     LOG_FILE: str = Field(default="data/logs/robot.log", env="LOG_FILE")

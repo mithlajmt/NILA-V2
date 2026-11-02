@@ -52,10 +52,11 @@ class ToolRegistry:
         return cls._registry
 
     @classmethod
-    def get_gemini_tools(cls) -> List[Any]:
+    def get_gemini_tools(cls, expo_mode: bool = False) -> List[Any]:
         """
         Convert registered tool schemas into google.genai.types.Tool objects.
         Compatible with Google Gemini Live WebSockets API (LiveConnectConfig).
+        If expo_mode is True, excludes office workflow tools (Gmail, Calendar, ERP, etc.)
         """
         try:
             from google.genai import types
@@ -63,8 +64,12 @@ class ToolRegistry:
             logger.warning("⚠️ 'google-genai' SDK not installed; skipping Gemini tool conversion.")
             return []
 
+        expo_allowed = {"trigger_robot_gesture", "get_current_time", "get_weather"}
+
         declarations = []
         for name, tool_info in cls._registry.items():
+            if expo_mode and name not in expo_allowed:
+                continue
             param_schema = tool_info["parameters"]
             
             # Build Gemini Schema parameters object

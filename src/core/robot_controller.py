@@ -51,6 +51,14 @@ class RobotController:
         from src.services.speech.wake_word_detector import WakeWordDetector
         self.wake_detector = WakeWordDetector(settings)
 
+        # Initialize Vision Service (Isolated Multiprocessing Worker)
+        from src.services.vision.vision_service import VisionService
+        self.vision_service = VisionService(settings)
+
+        # Initialize Hardware Serial Controller (Arduino Jaw & Hand Control)
+        from src.services.hardware.serial_controller import SerialController
+        self.serial_controller = SerialController(settings)
+
         # Initialize NilaRuntime Manager
         self.runtime = NilaRuntime(settings)
         self.event_bus = self.runtime.event_bus
@@ -81,6 +89,10 @@ class RobotController:
         self.event_bus.set_event_loop(asyncio.get_running_loop())
         self.runtime.start_new_session()
         
+        # Start Vision Service in background
+        if hasattr(self, 'vision_service') and self.vision_service:
+            self.vision_service.start()
+
         self.logger.info("🚀 Robot starting Event-Driven Runtime Loop...")
         
         # Check if Realtime WebSocket Mode is enabled in .env
@@ -325,4 +337,10 @@ class RobotController:
         if hasattr(self, 'feedback'):
             self.feedback.cleanup()
         
+        if hasattr(self, 'vision_service') and self.vision_service:
+            self.vision_service.cleanup()
+
+        if hasattr(self, 'serial_controller') and self.serial_controller:
+            self.serial_controller.close()
+
         self.logger.info("✅ Cleanup complete")

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 NILA-V2 - Fast Gemini Live Diagnostic & Speed Test Script
 ---------------------------------------------------------

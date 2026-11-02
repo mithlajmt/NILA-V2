@@ -15,6 +15,13 @@ int currentJawAngle = JAW_CLOSED_ANGLE;
 int targetJawAngle = JAW_CLOSED_ANGLE;
 float smoothingFactor = 0.3;
 
+// Hand / Arm Configuration (Servo 2: Right Arm)
+const int HAND_DOWN_ANGLE = 120; // Default lowered arm position
+const int HAND_UP_ANGLE = 75;    // Bit up / greeting raised position
+int currentHandAngle = HAND_DOWN_ANGLE;
+int targetHandAngle = HAND_DOWN_ANGLE;
+float handSmoothingFactor = 0.2;
+
 // Safety Timeout
 unsigned long lastCommandTime = 0;
 const unsigned long TIMEOUT_MS = 500;
@@ -63,7 +70,7 @@ void setup() {
   // Set normal positions
   servojaw.write(JAW_CLOSED_ANGLE);
   servo1.write(30);
-  servo2.write(120);
+  servo2.write(HAND_DOWN_ANGLE);
   servo4.write(60);
   servo3.write(120);
   servo5.write(150);
@@ -76,11 +83,13 @@ void setup() {
 }
 
 void loop() {
-  // Handle Jaw Movement via Serial
-  handleJawMovement();
+  // Handle Serial Commands (Jaw intensity 0-100, 'H' Hand UP, 'G' Hand DOWN)
+  handleSerialCommands();
   
-  // Run Body Animation State Machine
-  runBodyAnimation();
+  // Run Body Animation State Machine only if triggered
+  if (currentState != IDLE) {
+    runBodyAnimation();
+  }
   
   // Keep eyes ON
   digitalWrite(EYE_LED_PIN, HIGH);
@@ -88,22 +97,39 @@ void loop() {
   delay(15);
 }
 
-void handleJawMovement() {
+void handleSerialCommands() {
   // Check for incoming serial data
-  if (Serial.available() > 0) {
-    int intensity = Serial.parseInt();
-    
-    // Clear buffer
-    while (Serial.available() > 0) {
+  while (Serial.available() > 0) {
+    char c = Serial.peek();
+
+    // Hand UP Command ('H' or 'h' -> Face detected)
+    if (c == 'H' || c == 'h') {
+      Serial.read(); // Consume 'H'
+      targetHandAngle = HAND_UP_ANGLE;
+    }
+    // Hand DOWN Command ('G' or 'g' -> Face lost)
+    else if (c == 'G' || c == 'g') {
+      Serial.read(); // Consume 'G'
+      targetHandAngle = HAND_DOWN_ANGLE;
+    }
+    // Ignore newline or carriage return or space
+    else if (c == '\r' || c == '\n' || c == ' ') {
       Serial.read();
     }
-    
-    lastCommandTime = millis();
-    targetJawAngle = map(intensity, 0, 100, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
-    targetJawAngle = constrain(targetJawAngle, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
+    // Jaw Intensity Command (0 - 100)
+    else if (isDigit(c)) {
+      int intensity = Serial.parseInt();
+      lastCommandTime = millis();
+      targetJawAngle = map(intensity, 0, 100, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
+      targetJawAngle = constrain(targetJawAngle, JAW_CLOSED_ANGLE, JAW_OPEN_ANGLE);
+    }
+    else {
+      // Discard unrecognized byte
+      Serial.read();
+    }
   }
   
-  // Safety Timeout
+  // Safety Timeout for Jaw (close jaw if silence)
   if (millis() - lastCommandTime > TIMEOUT_MS) {
     targetJawAngle = JAW_CLOSED_ANGLE;
   }
@@ -113,6 +139,12 @@ void handleJawMovement() {
     currentJawAngle = currentJawAngle + (targetJawAngle - currentJawAngle) * smoothingFactor;
     servojaw.write(currentJawAngle);
   }
+
+  // Smooth hand / arm movement (Servo 2: Right Arm)
+  if (abs(currentHandAngle - targetHandAngle) > 0) {
+    currentHandAngle = currentHandAngle + (targetHandAngle - currentHandAngle) * handSmoothingFactor;
+    servo2.write(currentHandAngle);
+  }
 }
 
 void runBodyAnimation() {
@@ -120,11 +152,7 @@ void runBodyAnimation() {
   
   switch (currentState) {
     case IDLE:
-      if (elapsed > 100) {
-        currentState = RAISE_ARMS;
-        stateStartTime = millis();
-        animationStep = 0;
-      }
+      // Stay idle unless an animation is commanded
       break;
       
     case RAISE_ARMS:

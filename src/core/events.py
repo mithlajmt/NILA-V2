@@ -124,10 +124,16 @@ class WakeWordDetectedEvent(Event):
     confidence: float = 1.0
 
 
+# --- VISION & CAMERA EVENTS ---
+
 @dataclass
-class SpeechInterruptedEvent(Event):
-    """Fired when TTS audio playback is interrupted by user speech / barge-in"""
-    topic: str = "speech.interrupted"
-    reason: str = "barge_in"
+class VisionFaceDetectedEvent(Event):
+    """Fired when face detection state changes in the camera feed"""
+    topic: str = "vision.face"
+    detected: bool = False
+    face_count: int = 0
+    bounding_boxes: Optional[list] = None
+    detection_latency_ms: float = 0.0
+
 
 

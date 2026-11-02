@@ -30,6 +30,7 @@ class SerialController:
         self.settings = settings
         self.serial_conn: Optional[serial.Serial] = None
         self.is_connected = False
+        self._write_lock = threading.Lock()
         
         # Configuration
         self.port = getattr(settings, "SERIAL_PORT", "/dev/ttyUSB0")
@@ -44,11 +45,28 @@ class SerialController:
         self.event_bus.subscribe("speech.amplitude", self._handle_hardware_event)
         self.event_bus.subscribe("hardware.jaw", self._handle_hardware_event)
         self.event_bus.subscribe("state.change", self._handle_state_change)
+        self.event_bus.subscribe("vision.face", self._handle_vision_face_event)
+        self.event_bus.subscribe("hardware.gesture", self._handle_gesture_event)
 
     def _handle_hardware_event(self, event):
         """EventBus handler for jaw amplitude updates"""
         intensity = getattr(event, "intensity", 0)
         self.send_jaw_intensity(intensity)
+
+    def _handle_vision_face_event(self, event):
+        """EventBus handler for camera face detection"""
+        detected = getattr(event, "detected", False)
+        face_count = getattr(event, "face_count", 0)
+        self.logger.info(f"👀 [Hardware] Face event: detected={detected} (count={face_count}) -> Hand {'UP' if detected else 'DOWN'}")
+        self.move_hand(up=detected)
+
+    def _handle_gesture_event(self, event):
+        """EventBus handler for gesture command"""
+        gesture = getattr(event, "gesture_name", "idle")
+        if gesture in ["HAND_UP", "RAISE_HAND"]:
+            self.move_hand(up=True)
+        elif gesture in ["HAND_DOWN", "LOWER_HAND", "idle"]:
+            self.move_hand(up=False)
 
     def _handle_state_change(self, event):
         """EventBus handler for state transition updates"""
@@ -85,11 +103,34 @@ class SerialController:
             
             # Send command string "INTENSITY\n"
             command = f"{intensity}\n"
-            self.serial_conn.write(command.encode())
+            with self._write_lock:
+                self.serial_conn.write(command.encode())
             
         except Exception as e:
             self.logger.error(f"❌ Serial write error: {e}")
             self.close()
+
+    def move_hand(self, up: bool):
+        """
+        Move the robot's hand:
+        - When face detected (up=True): send 'H' to Arduino on /dev/ttyACM0
+        - When face not detected (up=False): send 'G' to Arduino on /dev/ttyACM0
+        """
+        char = "H" if up else "G"
+        state_str = "UP (H)" if up else "DOWN (G)"
+
+        if not self.is_connected or not self.serial_conn:
+            self.logger.info(f"🖐️ [Hardware] Hand {state_str} (Port {self.port} not connected)")
+            return
+
+        try:
+            # Send command character followed by newline
+            command = f"{char}\n"
+            with self._write_lock:
+                self.serial_conn.write(command.encode())
+            self.logger.info(f"🖐️ [Serial -> Arduino {self.port}] Sent '{char}' ({state_str})")
+        except Exception as e:
+            self.logger.error(f"❌ Serial write error sending '{char}' to Arduino: {e}")
             
     def close(self):
         """Close serial connection"""

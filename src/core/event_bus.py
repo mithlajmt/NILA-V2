@@ -146,6 +146,10 @@ class EventBus:
         except Exception as e:
             self.logger.error(f"❌ Failed to publish threadsafe event '{event.topic}': {e}")
 
+    def publish_sync(self, event: Event):
+        """Synchronous publishing alias for publish_threadsafe"""
+        return self.publish_threadsafe(event)
+
     async def _dispatch_to_handler(self, handler: Callable[[Event], Any], event: Event):
         """Invoke a single handler with error isolation"""
         try:
