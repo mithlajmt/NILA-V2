@@ -112,6 +112,13 @@ void handleSerialCommands() {
       Serial.read(); // Consume 'G'
       targetHandAngle = HAND_DOWN_ANGLE;
     }
+    // Hand Wave Command ('A' or 'a' -> Wave Gesture)
+    else if (c == 'A' || c == 'a') {
+      Serial.read(); // Consume 'A'
+      currentState = WAVE_DOWN;
+      stateStartTime = millis();
+      animationStep = 0;
+    }
     // Ignore newline or carriage return or space
     else if (c == '\r' || c == '\n' || c == ' ') {
       Serial.read();
@@ -333,8 +340,8 @@ void runBodyAnimation() {
       
     case PAUSE_END:
       if (elapsed > 2000) {
-        // Reset to start of animation sequence - CONTINUOUS LOOP
-        currentState = RAISE_ARMS;
+        // Return to IDLE after wave/gesture completion
+        currentState = IDLE;
         stateStartTime = millis();
         animationStep = 0;
       }

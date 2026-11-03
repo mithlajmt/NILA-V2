@@ -35,6 +35,7 @@ class SerialController:
         # Configuration
         self.port = getattr(settings, "SERIAL_PORT", "/dev/ttyUSB0")
         self.baud = getattr(settings, "SERIAL_BAUD", 115200)
+        self._last_connect_attempt = 0.0
         
         self.initialized = True
         self.connect()
@@ -62,39 +63,60 @@ class SerialController:
 
     def _handle_gesture_event(self, event):
         """EventBus handler for gesture command"""
-        gesture = getattr(event, "gesture_name", "idle")
+        gesture = str(getattr(event, "gesture_name", "idle")).upper()
         if gesture in ["HAND_UP", "RAISE_HAND"]:
             self.move_hand(up=True)
-        elif gesture in ["HAND_DOWN", "LOWER_HAND", "idle"]:
+        elif gesture in ["HAND_DOWN", "LOWER_HAND", "IDLE"]:
             self.move_hand(up=False)
+        elif gesture in ["WAVE", "WAVE_HAND", "GREET"]:
+            self.wave_hand()
 
     def _handle_state_change(self, event):
         """EventBus handler for state transition updates"""
         new_state = getattr(event, "new_state", "IDLE")
         self.logger.debug(f"🔌 Hardware State Sync: {new_state}")
         
-    def connect(self):
+    def _ensure_connected(self) -> bool:
+        """Attempt auto-reconnection with throttle if disconnected"""
+        if self.is_connected and self.serial_conn and self.serial_conn.is_open:
+            return True
+        now = time.time()
+        if now - self._last_connect_attempt >= 3.0:
+            self._last_connect_attempt = now
+            return self.connect()
+        return False
+
+    def connect(self) -> bool:
         """Establish serial connection"""
+        self._last_connect_attempt = time.time()
         try:
+            if self.serial_conn and self.serial_conn.is_open:
+                try:
+                    self.serial_conn.close()
+                except Exception:
+                    pass
+
             self.serial_conn = serial.Serial(
                 port=self.port,
                 baudrate=self.baud,
                 timeout=1
             )
-            time.sleep(2)  # Wait for Arduino reset
+            time.sleep(1.0)  # Brief wait for Arduino bootloader reset
             self.is_connected = True
             self.logger.info(f"✅ Hardware connected on {self.port}")
+            return True
             
         except Exception as e:
             self.logger.warning(f"⚠️ Hardware connection failed on {self.port}: {e}")
             self.is_connected = False
+            return False
             
     def send_jaw_intensity(self, intensity: int):
         """
         Send jaw intensity command (0-100)
         0 = Closed, 100 = Fully Open
         """
-        if not self.is_connected or not self.serial_conn:
+        if not self._ensure_connected() or not self.serial_conn:
             return
             
         try:
@@ -107,7 +129,7 @@ class SerialController:
                 self.serial_conn.write(command.encode())
             
         except Exception as e:
-            self.logger.error(f"❌ Serial write error: {e}")
+            self.logger.warning(f"⚠️ Serial write error: {e}. Marking connection for auto-reconnect.")
             self.close()
 
     def move_hand(self, up: bool):
@@ -119,8 +141,8 @@ class SerialController:
         char = "H" if up else "G"
         state_str = "UP (H)" if up else "DOWN (G)"
 
-        if not self.is_connected or not self.serial_conn:
-            self.logger.info(f"🖐️ [Hardware] Hand {state_str} (Port {self.port} not connected)")
+        if not self._ensure_connected() or not self.serial_conn:
+            self.logger.info(f"🖐️ [Hardware] Hand {state_str} (Port {self.port} not connected, will retry)")
             return
 
         try:
@@ -130,7 +152,27 @@ class SerialController:
                 self.serial_conn.write(command.encode())
             self.logger.info(f"🖐️ [Serial -> Arduino {self.port}] Sent '{char}' ({state_str})")
         except Exception as e:
-            self.logger.error(f"❌ Serial write error sending '{char}' to Arduino: {e}")
+            self.logger.warning(f"⚠️ Serial write error sending '{char}': {e}. Marking for auto-reconnect.")
+            self.close()
+
+    def wave_hand(self):
+        """
+        Wave the robot's hand:
+        - Sends 'A' to Arduino on /dev/ttyACM0
+        """
+        if not self._ensure_connected() or not self.serial_conn:
+            self.logger.info(f"👋 [Hardware] Wave Hand (Port {self.port} not connected, will retry)")
+            return
+
+        try:
+            # Send 'A' command followed by newline
+            command = "A\n"
+            with self._write_lock:
+                self.serial_conn.write(command.encode())
+            self.logger.info(f"👋 [Serial -> Arduino {self.port}] Sent 'A' (WAVE)")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Serial write error sending 'A': {e}. Marking for auto-reconnect.")
+            self.close()
             
     def close(self):
         """Close serial connection"""

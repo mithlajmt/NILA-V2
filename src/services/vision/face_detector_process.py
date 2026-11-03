@@ -16,13 +16,14 @@ from typing import Optional, List, Tuple, Any
 
 def find_dnn_model_files() -> Tuple[Optional[str], Optional[str]]:
     """Find OpenCV DNN Caffe model and prototxt files"""
+    base_dir = Path(__file__).resolve().parent.parent.parent.parent
     proto_candidates = [
-        "data/models/vision/deploy.prototxt",
-        "/home/learnlogicai/finalnila/NILA-V2/data/models/vision/deploy.prototxt"
+        str(base_dir / "data/models/vision/deploy.prototxt"),
+        "data/models/vision/deploy.prototxt"
     ]
     model_candidates = [
-        "data/models/vision/res10_300x300_ssd_iter_140000.caffemodel",
-        "/home/learnlogicai/finalnila/NILA-V2/data/models/vision/res10_300x300_ssd_iter_140000.caffemodel"
+        str(base_dir / "data/models/vision/res10_300x300_ssd_iter_140000.caffemodel"),
+        "data/models/vision/res10_300x300_ssd_iter_140000.caffemodel"
     ]
 
     proto = next((p for p in proto_candidates if Path(p).is_file()), None)
@@ -74,6 +75,14 @@ def run_face_detector_loop(
     logger = logging.getLogger("VisionProcess")
     logger.info(f"📷 Starting Vision Worker on camera index {camera_index} ({width}x{height} @ {target_fps} FPS)")
 
+    # Anti-Orphan: Auto-terminate if parent process dies unexpectedly
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6")
+        libc.prctl(1, 15)  # 1 = PR_SET_PDEATHSIG, 15 = SIGTERM
+    except Exception:
+        pass
+
     # Dedicate separate CPU Cores on Raspberry Pi 5 (Cores 2 & 3 dedicated for Vision, 0 & 1 for Audio)
     try:
         if hasattr(os, "sched_setaffinity"):
@@ -116,25 +125,27 @@ def run_face_detector_loop(
             return
         logger.info(f"✅ Loaded Haar cascade fallback: {xml_path}")
 
-    # Camera opening with retry
+    # Camera opening with retry & resource cleanup
     cap = None
-    frame_interval = 1.0 / max(1, target_fps)
     is_currently_detected = False
     last_seen_time = 0.0
     first_detected_time = None
     consecutive_hits = 0
+    reconnect_delay = 2.0
 
     def open_camera():
         logger.info(f"🔌 Opening /dev/video{camera_index} via V4L2...")
         c = cv2.VideoCapture(camera_index, cv2.CAP_V4L2)
         if not c.isOpened():
-            logger.warning("⚠️ V4L2 backend failed, falling back to default backend...")
+            c.release()  # Clean up failed V4L2 capture handle
+            logger.debug("V4L2 backend not opened; falling back to default backend...")
             c = cv2.VideoCapture(camera_index)
         if c.isOpened():
             c.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             c.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
             logger.info("✅ Camera stream opened successfully")
             return c
+        c.release()  # Clean up failed default capture handle
         return None
 
     cap = open_camera()
@@ -143,16 +154,36 @@ def run_face_detector_loop(
         cycle_start = time.time()
 
         if cap is None or not cap.isOpened():
-            if stop_event.wait(2.0):
+            if stop_event.wait(reconnect_delay):
                 break
             cap = open_camera()
+            if cap is None:
+                reconnect_delay = min(15.0, reconnect_delay * 1.5)
+            else:
+                reconnect_delay = 2.0
             continue
 
         ret, frame = cap.read()
         if not ret or frame is None:
             logger.warning("⚠️ Failed to grab frame from camera. Reconnecting...")
-            cap.release()
+            if cap:
+                cap.release()
             cap = None
+
+            if is_currently_detected:
+                is_currently_detected = False
+                logger.info("👋 Camera disconnected, clearing face presence state")
+                try:
+                    output_queue.put_nowait({
+                        "detected": False,
+                        "count": 0,
+                        "latency_ms": 0.0,
+                        "timestamp": time.time(),
+                        "boxes": []
+                    })
+                except Exception:
+                    pass
+
             if stop_event.wait(1.0):
                 break
             continue
@@ -264,9 +295,14 @@ def run_face_detector_loop(
             except Exception as fe:
                 logger.debug(f"Frame preview encode error: {fe}")
 
+        # Adaptive FPS: Scan at target_fps (5 FPS) when face is active/recent; throttle to 2 FPS when idle to save CPU
+        is_active = is_currently_detected or (time.time() - last_seen_time < 3.0)
+        active_target_fps = target_fps if is_active else min(2, target_fps)
+        effective_interval = 1.0 / max(1, active_target_fps)
+
         # Sleep remaining time to maintain target FPS without wasting CPU
         cycle_time = time.time() - cycle_start
-        sleep_needed = max(0.005, frame_interval - cycle_time)
+        sleep_needed = max(0.005, effective_interval - cycle_time)
         if stop_event.wait(sleep_needed):
             break
 

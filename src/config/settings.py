@@ -163,6 +163,11 @@ CRITICAL RULES FOR VOICE & TEXT OUTPUT:
     WEB_HOST: str = Field(default="0.0.0.0", env="WEB_HOST")
     GEMINI_LIVE_VOLUME_GAIN: float = Field(default=1.3, env="GEMINI_LIVE_VOLUME_GAIN")
 
+    # Telegram Bot Remote Control & Telemetry Settings
+    ENABLE_TELEGRAM_BOT: bool = Field(default=True, env="ENABLE_TELEGRAM_BOT")
+    TELEGRAM_BOT_TOKEN: str = Field(default="", env="TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID: str = Field(default="", env="TELEGRAM_CHAT_ID")
+
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     LOG_FILE: str = Field(default="data/logs/robot.log", env="LOG_FILE")

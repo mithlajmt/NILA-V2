@@ -68,11 +68,7 @@ class GeminiLiveProvider:
         # Hardware & EventBus
         self.event_bus = EventBus()
         self.serial_ctrl = SerialController(settings)
-
-        # Auto-connect Bluetooth speaker if configured
-        bt_mac = getattr(settings, "BT_SPEAKER_MAC", "41:42:84:29:F2:CE")
-        if bt_mac:
-            os.system(f"echo 'connect {bt_mac}' | bluetoothctl > /dev/null 2>&1")
+        self.player_worker_alive = False
 
         # Smart Hardware Audio Device Detection (Strictly bypass webcam mics)
         self.mic_device_index = self._find_audio_device(is_input=True)
@@ -245,8 +241,8 @@ class GeminiLiveProvider:
         )
 
         loop = asyncio.get_running_loop()
-        audio_queue = asyncio.Queue()
-        playback_queue = asyncio.Queue()
+        audio_queue = asyncio.Queue(maxsize=100)
+        playback_queue = asyncio.Queue(maxsize=200)
 
         # Noise calibration over 1 second (runs on first startup only)
         if self.calibrated_threshold is None:
@@ -289,6 +285,7 @@ class GeminiLiveProvider:
                 self.logger.info(f"🔊 Speaker Playback Rate: {playback_rate} Hz (Speed Ratio: {self.speed_ratio})")
 
                 async def player_worker():
+                    self.player_worker_alive = True
                     try:
                         with sd.OutputStream(device=self.speaker_device_index, samplerate=playback_rate, channels=self.channels, dtype='int16') as out_stream:
                             while self.is_running:
@@ -316,10 +313,24 @@ class GeminiLiveProvider:
                                 if gain != 1.0:
                                     boosted = audio_np.astype(np.float32) * gain
                                     audio_np = np.clip(boosted, -32767, 32767).astype(np.int16)
-                                await asyncio.to_thread(out_stream.write, audio_np)
+                                try:
+                                    await asyncio.to_thread(out_stream.write, audio_np)
+                                except Exception as write_err:
+                                    self.logger.warning(f"Audio write failure: {write_err}")
+                                    playback_queue.task_done()
+                                    break
                                 playback_queue.task_done()
                     except Exception as pe:
-                        self.logger.debug(f"Audio output player stream closed cleanly: {pe}")
+                        self.logger.warning(f"Audio output player stream error: {pe}")
+                    finally:
+                        self.player_worker_alive = False
+                        # Cleanly drain any remaining items so playback_queue.join() never deadlocks
+                        while not playback_queue.empty():
+                            try:
+                                playback_queue.get_nowait()
+                                playback_queue.task_done()
+                            except (asyncio.QueueEmpty, ValueError):
+                                break
 
                 player_task = asyncio.create_task(player_worker())
 
@@ -395,99 +406,114 @@ class GeminiLiveProvider:
                 async def receive_response_audio():
                     current_model_text = []
                     while self.is_running:
-                        async for response in session.receive():
-                            if not self.is_running:
-                                break
-                            
-                            # Handle Gemini Live Tool / Function Calls
-                            if hasattr(response, "tool_call") and response.tool_call:
-                                self.is_recording_allowed = False
-                                for call in response.tool_call.function_calls:
-                                    fn_name = call.name
-                                    fn_args = dict(call.args) if hasattr(call, "args") and call.args else {}
-                                    fn_id = getattr(call, "id", None)
+                        try:
+                            async for response in session.receive():
+                                if not self.is_running:
+                                    break
+                                
+                                # Handle Gemini Live Tool / Function Calls
+                                if hasattr(response, "tool_call") and response.tool_call:
+                                    self.is_recording_allowed = False
+                                    for call in response.tool_call.function_calls:
+                                        fn_name = call.name
+                                        fn_args = dict(call.args) if hasattr(call, "args") and call.args else {}
+                                        fn_id = getattr(call, "id", None)
 
-                                    await self.event_bus.publish(StateChangeEvent(old_state="LISTENING", new_state="EXECUTING", reason=f"Executing tool {fn_name}"))
-                                    tool_result_str = await ToolRegistry.execute_tool(fn_name, fn_args)
+                                        await self.event_bus.publish(StateChangeEvent(old_state="LISTENING", new_state="EXECUTING", reason=f"Executing tool {fn_name}"))
+                                        tool_result_str = await ToolRegistry.execute_tool(fn_name, fn_args)
 
+                                        try:
+                                            tool_resp = types.LiveClientToolResponse(
+                                                function_responses=[
+                                                    types.FunctionResponse(name=fn_name, id=fn_id, response={"result": tool_result_str})
+                                                ]
+                                            )
+                                            await session.send(input=tool_resp)
+                                        except Exception as te:
+                                            self.logger.error(f"❌ Error sending tool response to Gemini: {te}")
+
+                                        await self.event_bus.publish(StateChangeEvent(old_state="EXECUTING", new_state="LISTENING", reason=f"Tool {fn_name} complete"))
+
+                                server_content = response.server_content
+                                if server_content is None:
+                                    continue
+
+                                # Check for user turn transcription
+                                if hasattr(server_content, "user_turn") and server_content.user_turn:
+                                    user_parts = [p.text for p in server_content.user_turn.parts if hasattr(p, "text") and p.text]
+                                    if user_parts:
+                                        user_transcript = ' '.join(user_parts)
+                                        self.logger.info(f"🗣️ [USER TRANSCRIPTION] \"{user_transcript}\"")
+                                        print("\n" + "="*60)
+                                        print("🎤 USER TRANSCRIPTION:")
+                                        print(f"\"{user_transcript}\"")
+                                        print("="*60)
+
+                                model_turn = server_content.model_turn
+                                if model_turn is not None:
+                                    self.is_recording_allowed = False
+                                    if not self.is_speaking:
+                                        self.is_speaking = True
+                                        current_model_text.clear()
+                                        await self.event_bus.publish(StateChangeEvent(old_state="LISTENING", new_state="SPEAKING", reason="Gemini Live Response"))
+                                        await self.event_bus.publish(TTSPlaybackEvent(status="started"))
+                                        while not audio_queue.empty():
+                                            try:
+                                                audio_queue.get_nowait()
+                                            except asyncio.QueueEmpty:
+                                                break
+
+                                    for part in model_turn.parts:
+                                        if hasattr(part, "text") and part.text:
+                                            current_model_text.append(part.text)
+                                            self.logger.info(f"🤖 [NILA SPEAKING] \"{part.text}\"")
+                                            await self.event_bus.publish(BrainLLMResponseEvent(text=part.text))
+                                        if part.inline_data:
+                                            audio_bytes = part.inline_data.data
+                                            intensity = self._calculate_rms_intensity(audio_bytes)
+                                            if self.player_worker_alive:
+                                                await playback_queue.put((audio_bytes, intensity))
+
+                                if server_content.turn_complete:
                                     try:
-                                        tool_resp = types.LiveClientToolResponse(
-                                            function_responses=[
-                                                types.FunctionResponse(name=fn_name, id=fn_id, response={"result": tool_result_str})
-                                            ]
-                                        )
-                                        await session.send(input=tool_resp)
-                                    except Exception as te:
-                                        self.logger.error(f"❌ Error sending tool response to Gemini: {te}")
+                                        await asyncio.wait_for(playback_queue.join(), timeout=3.5)
+                                    except asyncio.TimeoutError:
+                                        self.logger.warning("⚠️ Playback buffer join timed out; continuing turn.")
+                                        while not playback_queue.empty():
+                                            try:
+                                                playback_queue.get_nowait()
+                                                playback_queue.task_done()
+                                            except (asyncio.QueueEmpty, ValueError):
+                                                break
 
-                                    await self.event_bus.publish(StateChangeEvent(old_state="EXECUTING", new_state="LISTENING", reason=f"Tool {fn_name} complete"))
-
-                            server_content = response.server_content
-                            if server_content is None:
-                                continue
-
-                            # Check for user turn transcription
-                            if hasattr(server_content, "user_turn") and server_content.user_turn:
-                                user_parts = [p.text for p in server_content.user_turn.parts if hasattr(p, "text") and p.text]
-                                if user_parts:
-                                    user_transcript = ' '.join(user_parts)
-                                    self.logger.info(f"🗣️ [USER TRANSCRIPTION] \"{user_transcript}\"")
-                                    print("\n" + "="*60)
-                                    print("🎤 USER TRANSCRIPTION:")
-                                    print(f"\"{user_transcript}\"")
-                                    print("="*60)
-
-                            model_turn = server_content.model_turn
-                            if model_turn is not None:
-                                self.is_recording_allowed = False
-                                if not self.is_speaking:
-                                    self.is_speaking = True
-                                    current_model_text.clear()
-                                    await self.event_bus.publish(StateChangeEvent(old_state="LISTENING", new_state="SPEAKING", reason="Gemini Live Response"))
-                                    await self.event_bus.publish(TTSPlaybackEvent(status="started"))
+                                    if current_model_text:
+                                        full_spoken_text = "".join(current_model_text)
+                                        print("\n" + "="*60)
+                                        print("🤖 NILA RESPONDED & SPOKE:")
+                                        print(f"\"{full_spoken_text}\"")
+                                        print("="*60 + "\n")
+                                        current_model_text.clear()
+                                    if self.serial_ctrl.is_connected:
+                                        self.serial_ctrl.send_jaw_intensity(0)
+                                    await self.event_bus.publish(TTSPlaybackEvent(status="finished"))
+                                    await self.event_bus.publish(StateChangeEvent(old_state="SPEAKING", new_state="LISTENING", reason="Gemini Turn Complete"))
+                                    
+                                    # Post-speech cooldown: Purging mic queue and buffer
+                                    # Allow Bluetooth speaker buffer + acoustic room reverberation to settle completely
+                                    await asyncio.sleep(self.cooldown_after_speech)
                                     while not audio_queue.empty():
                                         try:
                                             audio_queue.get_nowait()
                                         except asyncio.QueueEmpty:
                                             break
-
-                                for part in model_turn.parts:
-                                    if hasattr(part, "text") and part.text:
-                                        current_model_text.append(part.text)
-                                        self.logger.info(f"🤖 [NILA SPEAKING] \"{part.text}\"")
-                                        await self.event_bus.publish(BrainLLMResponseEvent(text=part.text))
-                                    if part.inline_data:
-                                        audio_bytes = part.inline_data.data
-                                        intensity = self._calculate_rms_intensity(audio_bytes)
-                                        await playback_queue.put((audio_bytes, intensity))
-
-                            if server_content.turn_complete:
-                                await playback_queue.join()
-                                if current_model_text:
-                                    full_spoken_text = "".join(current_model_text)
-                                    print("\n" + "="*60)
-                                    print("🤖 NILA RESPONDED & SPOKE:")
-                                    print(f"\"{full_spoken_text}\"")
-                                    print("="*60 + "\n")
-                                    current_model_text.clear()
-                                if self.serial_ctrl.is_connected:
-                                    self.serial_ctrl.send_jaw_intensity(0)
-                                await self.event_bus.publish(TTSPlaybackEvent(status="finished"))
-                                await self.event_bus.publish(StateChangeEvent(old_state="SPEAKING", new_state="LISTENING", reason="Gemini Turn Complete"))
-                                
-                                # Post-speech cooldown: Purging mic queue and buffer
-                                # Allow Bluetooth speaker buffer + acoustic room reverberation to settle completely
-                                await asyncio.sleep(self.cooldown_after_speech)
-                                while not audio_queue.empty():
-                                    try:
-                                        audio_queue.get_nowait()
-                                    except asyncio.QueueEmpty:
-                                        break
-                                self.is_speaking = False
-                                self.filter_phase = 0.0
-                                self.is_recording_allowed = True
-                                self.logger.info("🎤 Listening re-enabled for user input")
-                                break
+                                    self.is_speaking = False
+                                    self.filter_phase = 0.0
+                                    self.is_recording_allowed = True
+                                    self.logger.info("🎤 Listening re-enabled for user input")
+                                    break
+                        except Exception as rx_err:
+                            self.logger.info(f"ℹ️ Gemini Live audio receiver session ended: {rx_err}")
+                            break
 
                 # Send initial turn to trigger Nila's startup greeting
                 try:
@@ -526,6 +552,11 @@ class GeminiLiveProvider:
 
                 try:
                     done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    for t in done:
+                        if not t.cancelled():
+                            exc = t.exception()
+                            if exc:
+                                self.logger.debug(f"Task completed with status: {exc}")
                     for p in pending:
                         p.cancel()
                     await asyncio.gather(*pending, return_exceptions=True)

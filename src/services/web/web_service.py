@@ -361,15 +361,20 @@ class WebService:
         gesture = gesture.lower()
 
         try:
-            if gesture in ("hand_up", "wave"):
+            if gesture == "wave":
+                ctrl.wave_hand()
+                self.hand_state = "WAVE"
+                self.add_log("system", "👋 Gesture: Wave Hand (Sent 'A')")
+                return True
+            elif gesture in ("hand_up", "raise"):
                 ctrl.move_hand(up=True)
                 self.hand_state = "UP"
-                self.add_log("system", "🖐️ Gesture: Hand Raised (Wave)")
+                self.add_log("system", "🖐️ Gesture: Hand Raised (Sent 'H')")
                 return True
-            elif gesture in ("hand_down", "rest"):
+            elif gesture in ("hand_down", "lower", "rest"):
                 ctrl.move_hand(up=False)
                 self.hand_state = "DOWN"
-                self.add_log("system", "🫳 Gesture: Hand Lowered (Rest)")
+                self.add_log("system", "🫳 Gesture: Hand Lowered (Sent 'G')")
                 return True
             elif gesture == "jaw":
                 # Quick jaw test twitch

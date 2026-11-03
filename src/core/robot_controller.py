@@ -28,26 +28,25 @@ class RobotController:
             'start_time': None
         }
         
-        # Auto-connect Bluetooth speaker if configured
-        bt_mac = getattr(settings, "BT_SPEAKER_MAC", "41:42:84:29:F2:CE")
-        if bt_mac:
-            import os
-            os.system(f"echo 'connect {bt_mac}' | bluetoothctl > /dev/null 2>&1")
-
-        # Initialize services
-        self.text_to_speech = TTSService(settings)
-        self.speech_recognizer = SpeechRecognizer(settings)
-        
-        # Step 3: Initialize LLM service
-        try:
-            self.llm_service = LLMService(settings)
-            self.llm_enabled = True
-            self.logger.info("🧠 LLM Service enabled - AI responses active!")
-        except Exception as e:
-            self.logger.warning(f"⚠️ LLM Service initialization failed: {e}")
-            self.logger.info("   Robot will run without AI responses (echo mode)")
+        # In Realtime Gemini Live mode, offline STT (Whisper), TTS, and LLM are bypassed to conserve maximum RAM
+        self.realtime_mode = getattr(settings, "ENABLE_REALTIME_MODE", False)
+        if not self.realtime_mode:
+            self.text_to_speech = TTSService(settings)
+            self.speech_recognizer = SpeechRecognizer(settings)
+            try:
+                self.llm_service = LLMService(settings)
+                self.llm_enabled = True
+                self.logger.info("🧠 Offline LLM Service enabled - AI responses active!")
+            except Exception as e:
+                self.logger.warning(f"⚠️ LLM Service initialization failed: {e}")
+                self.llm_service = None
+                self.llm_enabled = False
+        else:
+            self.text_to_speech = None
+            self.speech_recognizer = None
             self.llm_service = None
-            self.llm_enabled = False
+            self.llm_enabled = True
+            self.logger.info("⚡ Realtime Mode: Pure Gemini Live WebSocket active (offline TTS and Whisper models bypassed).")
             
         # Initialize Feedback Service
         from src.services.feedback.feedback_service import FeedbackService
@@ -68,6 +67,17 @@ class RobotController:
         # Initialize Web Dashboard & Telemetry Server
         from src.services.web.web_service import WebService
         self.web_service = WebService(settings, self)
+
+        # Initialize Telegram Remote & Telemetry Service
+        if getattr(settings, "ENABLE_TELEGRAM_BOT", True):
+            try:
+                from src.services.telegram.telegram_service import TelegramService
+                self.telegram_service = TelegramService(settings, self)
+            except Exception as e:
+                self.logger.warning(f"⚠️ Telegram Service initialization failed: {e}")
+                self.telegram_service = None
+        else:
+            self.telegram_service = None
 
         # Initialize NilaRuntime Manager
         self.runtime = NilaRuntime(settings)
@@ -106,6 +116,10 @@ class RobotController:
         # Start Web Dashboard in background daemon thread
         if hasattr(self, 'web_service') and self.web_service:
             self.web_service.start()
+
+        # Start Telegram Bot in background daemon thread
+        if hasattr(self, 'telegram_service') and self.telegram_service:
+            self.telegram_service.start()
 
         self.logger.info("🚀 Robot starting Event-Driven Runtime Loop...")
         
@@ -350,10 +364,10 @@ class RobotController:
         if hasattr(self, 'live_provider') and self.live_provider:
             self.live_provider.stop()
 
-        if hasattr(self, 'text_to_speech'):
+        if hasattr(self, 'text_to_speech') and self.text_to_speech:
             self.text_to_speech.cleanup()
         
-        if hasattr(self, 'speech_recognizer'):
+        if hasattr(self, 'speech_recognizer') and self.speech_recognizer:
             self.speech_recognizer.cleanup()
         
         if hasattr(self, 'llm_service') and self.llm_service:
@@ -367,6 +381,9 @@ class RobotController:
 
         if hasattr(self, 'web_service') and self.web_service:
             self.web_service.stop()
+
+        if hasattr(self, 'telegram_service') and self.telegram_service:
+            self.telegram_service.cleanup()
 
         if hasattr(self, 'serial_controller') and self.serial_controller:
             self.serial_controller.close()

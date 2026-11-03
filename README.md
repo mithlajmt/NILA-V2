@@ -96,6 +96,9 @@ NILA-V2 includes a built-in, zero-latency Web Dashboard and Remote Control App a
 Once Nila is running (or via `nila.service`), simply open a browser on any device connected to the same Wi-Fi:
 ```text
 http://<RaspberryPi-IP>:5000
+
+hostname -I
+
 ```
 *(On the Pi itself, open `http://localhost:5000`)*
 
@@ -118,6 +121,25 @@ http://<RaspberryPi-IP>:5000
      - 🔄 **Reconnect Gemini Session** (Cycles live session cleanly)
 5. **📡 Hardware Telemetry**:
    - Real-time Raspberry Pi SoC Temperature (°C), system uptime, Bluetooth speaker connection state (`3.0BT`), and Arduino USB serial link status.
+
+---
+
+## 📱 Telegram Remote Control & Mission Control
+
+NILA-V2 comes equipped with an instant Telegram bot integration (`@torres_assistant_bot`). Control and monitor Nila from anywhere in the world on your phone without needing to look up the Pi's IP address!
+
+### 🕹️ Interactive Menu & Commands
+| Button / Command | Action |
+| :--- | :--- |
+| `🖐️ Hand UP` / `/hand_up` | Raise Nila's hand (Arduino sent `'H'`) |
+| `🖐️ Hand DOWN` / `/hand_down` | Lower Nila's hand (Arduino sent `'G'`) |
+| `📸 Camera Snap` / `/snap` | Instant camera photo snapshot delivered to Telegram |
+| `📊 System Status` / `/status` | Complete hardware health report (Mic, BT Speaker, Camera, Temp, IP) |
+| `📜 Recent Logs` / `/logs` | View recent conversation and system logs |
+| `📶 Wi-Fi Status` / `/wifi` | View active Wi-Fi SSID, signal strength, and IP |
+| `/addwifi <SSID> <PASS>` | Connect Nila to a new Wi-Fi network |
+| `🗣️ /say <text>` | Make Nila speak your message aloud through her speaker |
+| `🔄 Restart Nila` / `/restart` | Clean remote reboot of `nila.service` |
 
 ---
 

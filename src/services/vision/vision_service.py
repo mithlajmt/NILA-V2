@@ -58,13 +58,15 @@ class VisionService(BaseWorker):
         self.is_running = True
         self.logger.info(f"🚀 Launching Vision Worker on CPU core (/dev/video{self.camera_index})...")
 
-        self.stop_event = mp.Event()
-        self.output_queue = mp.Queue()
-        self.frame_buffer = mp.Array('B', 150000)
-        self.frame_len = mp.Value('i', 0)
-        self.frame_lock = mp.Lock()
+        # Use 'spawn' start method so child process starts cleanly without cloning parent memory
+        ctx = mp.get_context("spawn")
+        self.stop_event = ctx.Event()
+        self.output_queue = ctx.Queue(maxsize=50)
+        self.frame_buffer = ctx.Array('B', 300000)
+        self.frame_len = ctx.Value('i', 0)
+        self.frame_lock = ctx.Lock()
 
-        self.process = mp.Process(
+        self.process = ctx.Process(
             target=run_face_detector_loop,
             name="NilaVisionWorker",
             args=(
@@ -152,6 +154,17 @@ class VisionService(BaseWorker):
             if self.process.is_alive():
                 self.logger.warning("⚠️ Vision process unresponsive, terminating...")
                 self.process.terminate()
+                try:
+                    self.process.join(timeout=1.0)
+                except Exception:
+                    pass
+
+        if self.output_queue:
+            try:
+                self.output_queue.close()
+                self.output_queue.join_thread()
+            except Exception:
+                pass
 
         self.logger.info("✅ Vision Service stopped")
 
