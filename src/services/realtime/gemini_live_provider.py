@@ -44,6 +44,7 @@ class GeminiLiveProvider:
         self.is_recording_allowed = False  # Strict Half-Duplex gate: muted until ready for user input
         self.session = None
         self.calibrated_threshold = None
+        self.has_greeted_on_boot = False
 
         # Audio Configuration
         self.input_rate = 16000
@@ -515,18 +516,24 @@ class GeminiLiveProvider:
                             self.logger.info(f"ℹ️ Gemini Live audio receiver session ended: {rx_err}")
                             break
 
-                # Send initial turn to trigger Nila's startup greeting
-                try:
-                    self.is_recording_allowed = False
-                    greeting_prompt = "Hello! Briefly welcome the user in 1 short sentence as Nila."
-                    initial_turn = types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text=greeting_prompt)]
-                    )
-                    await session.send_client_content(turns=[initial_turn], turn_complete=True)
-                except Exception as ge:
-                    self.logger.warning(f"Could not send startup greeting: {ge}")
+                # Send initial turn to trigger Nila's startup greeting ONLY once on boot
+                if not self.has_greeted_on_boot:
+                    try:
+                        self.has_greeted_on_boot = True
+                        self.is_recording_allowed = False
+                        greeting_prompt = "Hello! Briefly welcome the user in 1 short sentence as Nila."
+                        initial_turn = types.Content(
+                            role="user",
+                            parts=[types.Part.from_text(text=greeting_prompt)]
+                        )
+                        await session.send_client_content(turns=[initial_turn], turn_complete=True)
+                    except Exception as ge:
+                        self.logger.warning(f"Could not send startup greeting: {ge}")
+                        self.is_recording_allowed = True
+                else:
+                    # 100% Silent background reconnect: do not send any greeting turn
                     self.is_recording_allowed = True
+                    self.logger.info("🤫 Silent background reconnect active. Listening for user input...")
 
                 session_start_time = time.time()
 
