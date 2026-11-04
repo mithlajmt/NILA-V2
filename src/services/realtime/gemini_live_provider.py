@@ -306,8 +306,7 @@ class GeminiLiveProvider:
                                 self.is_recording_allowed = False
                                 audio_bytes, intensity = item
                                 await self.event_bus.publish(SpeechAmplitudeEvent(intensity=intensity))
-                                if self.serial_ctrl.is_connected:
-                                    self.serial_ctrl.send_jaw_intensity(intensity)
+                                self.serial_ctrl.send_jaw_intensity(intensity)
                                 audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
                                 audio_np = self._apply_robotic_voice_filter(audio_np)
                                 gain = getattr(self, "volume_gain", 1.0)
@@ -321,6 +320,8 @@ class GeminiLiveProvider:
                                     playback_queue.task_done()
                                     break
                                 playback_queue.task_done()
+                                if playback_queue.empty():
+                                    self.serial_ctrl.send_jaw_intensity(0)
                     except Exception as pe:
                         self.logger.warning(f"Audio output player stream error: {pe}")
                     finally:
@@ -494,8 +495,12 @@ class GeminiLiveProvider:
                                         print(f"\"{full_spoken_text}\"")
                                         print("="*60 + "\n")
                                         current_model_text.clear()
-                                    if self.serial_ctrl.is_connected:
-                                        self.serial_ctrl.send_jaw_intensity(0)
+                                    self.serial_ctrl.send_jaw_intensity(0)
+                                    try:
+                                        from src.services.hardware.jaw_controller import JawController
+                                        JawController().close_jaw()
+                                    except Exception:
+                                        pass
                                     await self.event_bus.publish(TTSPlaybackEvent(status="finished"))
                                     await self.event_bus.publish(StateChangeEvent(old_state="SPEAKING", new_state="LISTENING", reason="Gemini Turn Complete"))
                                     
@@ -584,8 +589,7 @@ class GeminiLiveProvider:
             self.is_speaking = False
             self.user_speaking = False
             self.is_recording_allowed = False
-            if self.serial_ctrl.is_connected:
-                self.serial_ctrl.send_jaw_intensity(0)
+            self.serial_ctrl.send_jaw_intensity(0)
             self.logger.info("👋 Gemini Live WebSocket Session Ended.")
             # Grace period for OS/ALSA to release sound hardware handles
             await asyncio.sleep(0.5)

@@ -251,8 +251,8 @@ class WebService:
 
         elif isinstance(event, VisionFaceDetectedEvent):
             self.face_status["detected"] = event.detected
-            self.face_status["count"] = event.count
-            self.face_status["latency_ms"] = event.latency_ms
+            self.face_status["count"] = getattr(event, "face_count", getattr(event, "count", 0))
+            self.face_status["latency_ms"] = getattr(event, "detection_latency_ms", getattr(event, "latency_ms", 0.0))
             if event.detected:
                 self.face_status["last_seen"] = time.time()
                 self.hand_state = "UP"

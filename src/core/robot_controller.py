@@ -64,6 +64,15 @@ class RobotController:
         from src.services.hardware.serial_controller import SerialController
         self.serial_controller = SerialController(settings)
 
+        # Initialize Raspberry Pi GPIO Jaw Controller (GPIO 12 Servo)
+        from src.services.hardware.jaw_controller import JawController
+        self.jaw_controller = JawController(
+            gpio_pin=getattr(settings, "JAW_GPIO_PIN", 12),
+            close_angle=getattr(settings, "JAW_CLOSE_ANGLE", 75.0),
+            max_open_angle=getattr(settings, "JAW_MAX_OPEN_ANGLE", 110.0),
+            smoothing=getattr(settings, "JAW_SMOOTHING", 0.35),
+        )
+
         # Initialize Web Dashboard & Telemetry Server
         from src.services.web.web_service import WebService
         self.web_service = WebService(settings, self)
@@ -387,5 +396,8 @@ class RobotController:
 
         if hasattr(self, 'serial_controller') and self.serial_controller:
             self.serial_controller.close()
+
+        if hasattr(self, 'jaw_controller') and self.jaw_controller:
+            self.jaw_controller.cleanup()
 
         self.logger.info("✅ Cleanup complete")

@@ -116,6 +116,17 @@ class SerialController:
         Send jaw intensity command (0-100)
         0 = Closed, 100 = Fully Open
         """
+        # Forward directly to GPIO 12 JawController
+        try:
+            from src.services.hardware.jaw_controller import JawController
+            jaw = JawController()
+            if intensity is None or int(intensity) <= 0:
+                jaw.close_jaw()
+            else:
+                jaw.set_intensity(intensity)
+        except Exception as e:
+            self.logger.debug(f"JawController forward error: {e}")
+
         if not self._ensure_connected() or not self.serial_conn:
             return
             

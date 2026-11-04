@@ -129,11 +129,15 @@ CRITICAL RULES FOR VOICE & TEXT OUTPUT:
     ELEVENLABS_VOICE_ID: str = Field(default="j36Me84eUGSrrHkIwAZQ", env="ELEVENLABS_VOICE_ID")
     ELEVENLABS_MODEL_ID: str = Field(default="eleven_v3", env="ELEVENLABS_MODEL_ID")
 
-    # Hardware / Serial Settings
+    # Hardware / Serial & Servo Settings
     SERIAL_PORT: str = Field(default="/dev/ttyACM0", env="SERIAL_PORT")
     SERIAL_BAUD: int = Field(default=115200, env="SERIAL_BAUD")
-    SERVO_MIN_ANGLE: int = Field(default=90, env="SERVO_MIN_ANGLE")
-    SERVO_MAX_ANGLE: int = Field(default=130, env="SERVO_MAX_ANGLE")
+    SERVO_MIN_ANGLE: int = Field(default=75, env="SERVO_MIN_ANGLE")
+    SERVO_MAX_ANGLE: int = Field(default=110, env="SERVO_MAX_ANGLE")
+    JAW_GPIO_PIN: int = Field(default=12, env="JAW_GPIO_PIN")
+    JAW_CLOSE_ANGLE: float = Field(default=75.0, env="JAW_CLOSE_ANGLE")
+    JAW_MAX_OPEN_ANGLE: float = Field(default=110.0, env="JAW_MAX_OPEN_ANGLE")
+    JAW_SMOOTHING: float = Field(default=0.35, env="JAW_SMOOTHING")
     
     # Audio Capture Settings (Raspberry Pi / PipeWire)
     AUDIO_SAMPLE_RATE: int = Field(default=16000, env="AUDIO_SAMPLE_RATE")  # Hz (Google STT requires 16kHz)

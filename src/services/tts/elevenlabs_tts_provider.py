@@ -102,20 +102,24 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
             return None
             
     async def _play_audio(self, audio_file: Path):
-        """Play audio file using Pygame mixer"""
+        """Play audio file using Pygame mixer with synchronized jaw movements"""
         try:
             self.is_speaking = True
-            pygame.mixer.music.load(str(audio_file))
-            pygame.mixer.music.play()
-            
-            while pygame.mixer.music.get_busy():
-                await asyncio.sleep(0.05)
-                
+            from src.utils.audio_lipsync import play_audio_with_lipsync
+            await play_audio_with_lipsync(
+                audio_file=audio_file,
+                is_speaking_check=lambda: self.is_speaking,
+            )
             self.is_speaking = False
-            self.logger.debug("✅ Audio playback completed")
+            self.logger.debug("✅ Audio playback & Lip Sync completed")
         except Exception as e:
             self.is_speaking = False
             self.logger.error(f"❌ Audio playback error: {e}")
+            try:
+                from src.services.hardware.jaw_controller import JawController
+                JawController().close_jaw()
+            except Exception:
+                pass
 
     def stop_speaking(self):
         """Stop audio playback"""
@@ -123,6 +127,8 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
             if pygame.mixer.music.get_busy():
                 pygame.mixer.music.stop()
             self.is_speaking = False
+            from src.services.hardware.jaw_controller import JawController
+            JawController().close_jaw()
         except Exception as e:
             self.logger.error(f"❌ Stop speaking error: {e}")
 
