@@ -1,0 +1,19 @@
+[Unit]
+Description=NILA Wi-Fi Provisioning and Recovery Service
+After=NetworkManager.service
+Wants=NetworkManager.service
+# Non-blocking: does not block nila.service startup
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/learnlogicai/nilaprod/NILA-V2
+Environment="PATH=/home/learnlogicai/nilaprod/NILA-V2/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/home/learnlogicai/nilaprod/NILA-V2/venv/bin/python -m src.services.wifi_provisioning.daemon
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+

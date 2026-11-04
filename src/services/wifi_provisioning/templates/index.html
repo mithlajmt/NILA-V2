@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>NILA Robot — Wi-Fi Setup</title>
+  <style>
+    :root {
+      --bg-color: #0d1117;
+      --card-bg: #161b22;
+      --card-border: #30363d;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --primary: #388bfd;
+      --primary-hover: #1f6feb;
+      --success: #238636;
+      --danger: #da3633;
+      --warning: #d29922;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      line-height: 1.5;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    header {
+      text-align: center;
+      padding: 12px 0;
+    }
+
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #21262d;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 8px;
+      border: 1px solid var(--card-border);
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.05s ease;
+      color: #fff;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+    }
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background-color: #21262d;
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+    }
+    .btn-secondary:hover {
+      background-color: #30363d;
+    }
+
+    .btn-block {
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+    }
+
+    .network-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 380px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .network-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0d1117;
+      border: 1px solid var(--card-border);
+      padding: 12px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .network-item:hover {
+      border-color: var(--primary);
+      background: #161b22;
+    }
+
+    .network-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .network-ssid {
+      font-weight: 600;
+      font-size: 15px;
+      color: #fff;
+    }
+
+    .network-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .signal-bars {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 12px;
+    }
+
+    .bar {
+      width: 3px;
+      background: #30363d;
+      border-radius: 1px;
+    }
+    .bar.active {
+      background: var(--primary);
+    }
+
+    .status-alert {
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 12px;
+      display: none;
+    }
+
+    .status-alert.info {
+      background: rgba(56, 139, 253, 0.15);
+      border: 1px solid var(--primary);
+      color: #79c0ff;
+    }
+    .status-alert.danger {
+      background: rgba(218, 54, 51, 0.15);
+      border: 1px solid var(--danger);
+      color: #ff7b72;
+    }
+    .status-alert.success {
+      background: rgba(35, 134, 54, 0.15);
+      border: 1px solid var(--success);
+      color: #56d364;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Modal dialog */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(2px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 1000;
+    }
+
+    .modal-content {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+      padding: 20px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    input[type="text"], input[type="password"], select {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid var(--card-border);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 15px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--primary);
+    }
+
+    .toggle-pwd {
+      position: absolute;
+      right: 10px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 4px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: auto;
+      padding-top: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo-badge">🤖 NILA-V2 Setup Portal</div>
+    <h1>Wi-Fi Provisioning</h1>
+    <p class="subtitle">Connect your robot to a local wireless network</p>
+  </header>
+
+  <div id="alertBox" class="status-alert"></div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Available Networks</div>
+      <button id="rescanBtn" class="btn btn-secondary" onclick="scanNetworks(true)">
+        <span id="rescanIcon">↻</span> Scan
+      </button>
+    </div>
+
+    <div id="networkList" class="network-list">
+      <div style="text-align:center; padding: 24px; color: var(--text-muted);">
+        <div class="spinner" style="margin-bottom:8px;"></div>
+        <div>Scanning for nearby Wi-Fi...</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-secondary btn-block" onclick="openManualModal()">
+    + Join Other / Hidden Network
+  </button>
+
+  <footer>
+    Primary Portal Address: <strong>http://192.168.4.1</strong><br>
+    NILA Robot Provisioning System
+  </footer>
+</div>
+
+<!-- Password / Connect Modal -->
+<div id="connectModal" class="modal-overlay">
+  <div class="modal-content">
+    <div class="modal-title" id="modalSSID">Connect to Wi-Fi</div>
+    <form id="connectForm" onsubmit="submitConnection(event)">
+      <input type="hidden" id="formSSID">
+      <input type="hidden" id="formHidden" value="false">
+
+      <div class="form-group" id="manualSsidGroup" style="display:none;">
+        <label for="manualSSID">Network Name (SSID)</label>
+        <input type="text" id="manualSSID" placeholder="Enter network SSID">
+      </div>
+
+      <div class="form-group" id="passwordGroup">
+        <label for="formPassword">Password</label>
+        <div class="input-wrapper">
+          <input type="password" id="formPassword" placeholder="Wi-Fi passphrase" autocomplete="current-password">
+          <button type="button" class="toggle-pwd" onclick="togglePasswordVisibility()">Show</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" id="submitBtn" class="btn btn-primary">Connect</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  let isConnecting = false;
+  let statusPollTimer = null;
+
+  function showAlert(msg, type = "info") {
+    const box = document.getElementById("alertBox");
+    box.className = "status-alert " + type;
+    box.innerHTML = msg;
+    box.style.display = "block";
+  }
+
+  function hideAlert() {
+    document.getElementById("alertBox").style.display = "none";
+  }
+
+  function renderSignalBars(signal) {
+    let activeCount = 1;
+    if (signal > 75) activeCount = 4;
+    else if (signal > 50) activeCount = 3;
+    else if (signal > 25) activeCount = 2;
+
+    return `
+      <div class="signal-bars" title="${signal}%">
+        <div class="bar ${activeCount >= 1 ? 'active' : ''}" style="height:3px;"></div>
+        <div class="bar ${activeCount >= 2 ? 'active' : ''}" style="height:6px;"></div>
+        <div class="bar ${activeCount >= 3 ? 'active' : ''}" style="height:9px;"></div>
+        <div class="bar ${activeCount >= 4 ? 'active' : ''}" style="height:12px;"></div>
+      </div>
+    `;
+  }
+
+  async function scanNetworks(forceRescan = false) {
+    const btn = document.getElementById("rescanBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Scanning...';
+
+    try {
+      const url = forceRescan ? "/api/networks?rescan=1" : "/api/networks";
+      const resp = await fetch(url);
+      const data = await resp.json();
+
+      const listEl = document.getElementById("networkList");
+      if (!data.networks || data.networks.length === 0) {
+        listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted);">No Wi-Fi networks found. Try scanning again.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = data.networks.map(net => `
+        <div class="network-item" onclick="selectNetwork('${encodeURIComponent(net.ssid)}', '${net.security}')">
+          <div class="network-info">
+            <div class="network-ssid">${escapeHtml(net.ssid)}</div>
+            <div class="network-meta">
+              ${renderSignalBars(net.signal)}
+              <span>${net.signal}%</span>
+              <span>•</span>
+              <span>${net.security}</span>
+              ${net.in_use ? '<span style="color:var(--success);">• Current</span>' : ''}
+            </div>
+          </div>
+          <button class="btn btn-secondary" style="font-size:12px; padding:4px 10px;">Select</button>
+        </div>
+      `).join("");
+    } catch (err) {
+      console.error(err);
+      showAlert("Failed to scan networks. Is the provisioning service active?", "danger");
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span id="rescanIcon">↻</span> Scan';
+    }
+  }
+
+  function selectNetwork(encodedSSID, security) {
+    const ssid = decodeURIComponent(encodedSSID);
+    document.getElementById("modalSSID").innerText = `Connect to "${ssid}"`;
+    document.getElementById("formSSID").value = ssid;
+    document.getElementById("formHidden").value = "false";
+    document.getElementById("manualSsidGroup").style.display = "none";
+    document.getElementById("formPassword").value = "";
+
+    const pwdGroup = document.getElementById("passwordGroup");
+    if (security === "Open") {
+      pwdGroup.style.display = "none";
+    } else {
+      pwdGroup.style.display = "flex";
+    }
+
+    document.getElementById("connectModal").style.display = "flex";
+    if (security !== "Open") {
+      setTimeout(() => document.getElementById("formPassword").focus(), 100);
+    }
+  }
+
+  function openManualModal() {
+    document.getElementById("modalSSID").innerText = "Join Other / Hidden Network";
+    document.getElementById("formSSID").value = "";
+    document.getElementById("formHidden").value = "true";
+    document.getElementById("manualSSID").value = "";
+    document.getElementById("manualSsidGroup").style.display = "flex";
+    document.getElementById("passwordGroup").style.display = "flex";
+    document.getElementById("formPassword").value = "";
+
+    document.getElementById("connectModal").style.display = "flex";
+    setTimeout(() => document.getElementById("manualSSID").focus(), 100);
+  }
+
+  function closeModal() {
+    document.getElementById("connectModal").style.display = "none";
+  }
+
+  function togglePasswordVisibility() {
+    const pwd = document.getElementById("formPassword");
+    const btn = event.target;
+    if (pwd.type === "password") {
+      pwd.type = "text";
+      btn.innerText = "Hide";
+    } else {
+      pwd.type = "password";
+      btn.innerText = "Show";
+    }
+  }
+
+  async function submitConnection(e) {
+    e.preventDefault();
+    if (isConnecting) return;
+
+    let ssid = document.getElementById("formSSID").value.trim();
+    const isHidden = document.getElementById("formHidden").value === "true";
+    if (isHidden) {
+      ssid = document.getElementById("manualSSID").value.trim();
+    }
+    const password = document.getElementById("formPassword").value;
+
+    if (!ssid) {
+      alert("Please enter a valid network SSID.");
+      return;
+    }
+
+    closeModal();
+    isConnecting = true;
+    showAlert(`<div style="display:flex;align-items:center;gap:10px;"><div class="spinner"></div><div>Connecting to <strong>${escapeHtml(ssid)}</strong>... NILA is verifying credentials.</div></div>`, "info");
+
+    try {
+      const resp = await fetch("/api/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ssid, password, hidden: isHidden })
+      });
+      const res = await resp.json();
+      if (!resp.ok) {
+        throw new Error(res.error || "Failed to start connection attempt");
+      }
+
+      startStatusPolling(ssid);
+    } catch (err) {
+      isConnecting = false;
+      showAlert(`Error: ${err.message}`, "danger");
+    }
+  }
+
+  function startStatusPolling(targetSSID) {
+    if (statusPollTimer) clearInterval(statusPollTimer);
+
+    let attempts = 0;
+    const maxAttempts = 35; // ~35 seconds polling
+
+    statusPollTimer = setInterval(async () => {
+      attempts++;
+      try {
+        const resp = await fetch("/api/status");
+        const status = await resp.json();
+
+        if (status.state === "CONNECTED" && status.is_wifi_connected) {
+          clearInterval(statusPollTimer);
+          isConnecting = false;
+          showAlert(`✓ Successfully connected to <strong>${escapeHtml(status.active_connection || targetSSID)}</strong>!<br>IP: ${status.ip_address || "Acquired"}. NILA-SETUP hotspot will now deactivate.`, "success");
+        } else if (status.state === "FAILED_ROLLBACK" || status.last_error) {
+          clearInterval(statusPollTimer);
+          isConnecting = false;
+          showAlert(`✕ Connection failed: ${escapeHtml(status.last_error || "Unknown error")}.<br>NILA-SETUP remains active so you can try again.`, "danger");
+        }
+      } catch (err) {
+        // If device switches network, portal may disconnect which can indicate success
+        if (attempts > 8) {
+          showAlert(`Network switch detected. If you disconnected from NILA-SETUP, NILA likely joined ${escapeHtml(targetSSID)} successfully.`, "info");
+        }
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(statusPollTimer);
+        isConnecting = false;
+        showAlert("Connection attempt timed out. NILA-SETUP is still available. Please verify the password and retry.", "warning");
+      }
+    }, 1000);
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>"']/g, function(m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+    });
+  }
+
+  // Initial network scan on page load
+  window.addEventListener("DOMContentLoaded", () => scanNetworks(false));
+</script>
+</body>
+</html>
+
