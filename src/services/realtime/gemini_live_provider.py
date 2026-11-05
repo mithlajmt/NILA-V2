@@ -70,6 +70,8 @@ class GeminiLiveProvider:
         self.event_bus = EventBus()
         self.serial_ctrl = SerialController(settings)
         self.player_worker_alive = False
+        self.jaw_sync_delay = float(getattr(settings, "JAW_SYNC_DELAY", 1.2))
+        self._jaw_turn_id = 0
 
         # Smart Hardware Audio Device Detection (Strictly bypass webcam mics)
         self.mic_device_index = self._find_audio_device(is_input=True)
@@ -188,6 +190,17 @@ class GeminiLiveProvider:
         normalized = min(1.0, rms / 4000.0)
         return max(0, min(100, int(normalized * 100)))
 
+    async def _send_jaw_intensity_delayed(self, intensity: int, turn_id: int):
+        """Send jaw intensity synchronized with Bluetooth speaker playback latency."""
+        try:
+            if self.jaw_sync_delay > 0:
+                await asyncio.sleep(self.jaw_sync_delay)
+            if self.is_running and self._jaw_turn_id == turn_id:
+                await self.event_bus.publish(SpeechAmplitudeEvent(intensity=intensity))
+                self.serial_ctrl.send_jaw_intensity(intensity)
+        except Exception as e:
+            self.logger.debug(f"Delayed jaw send error: {e}")
+
     async def start_live_session(self):
         """Start the bidirectional realtime WebSocket loop"""
         if not self.api_key:
@@ -305,8 +318,11 @@ class GeminiLiveProvider:
                                 self.is_speaking = True
                                 self.is_recording_allowed = False
                                 audio_bytes, intensity = item
-                                await self.event_bus.publish(SpeechAmplitudeEvent(intensity=intensity))
-                                self.serial_ctrl.send_jaw_intensity(intensity)
+                                if self.jaw_sync_delay > 0:
+                                    asyncio.create_task(self._send_jaw_intensity_delayed(intensity, self._jaw_turn_id))
+                                else:
+                                    await self.event_bus.publish(SpeechAmplitudeEvent(intensity=intensity))
+                                    self.serial_ctrl.send_jaw_intensity(intensity)
                                 audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
                                 audio_np = self._apply_robotic_voice_filter(audio_np)
                                 gain = getattr(self, "volume_gain", 1.0)
@@ -321,7 +337,10 @@ class GeminiLiveProvider:
                                     break
                                 playback_queue.task_done()
                                 if playback_queue.empty():
-                                    self.serial_ctrl.send_jaw_intensity(0)
+                                    if self.jaw_sync_delay > 0:
+                                        asyncio.create_task(self._send_jaw_intensity_delayed(0, self._jaw_turn_id))
+                                    else:
+                                        self.serial_ctrl.send_jaw_intensity(0)
                     except Exception as pe:
                         self.logger.warning(f"Audio output player stream error: {pe}")
                     finally:
@@ -389,6 +408,7 @@ class GeminiLiveProvider:
 
                                             # Immediately lock recording while waiting for Gemini to think and respond
                                             self.is_recording_allowed = False
+                                            self._jaw_turn_id += 1
                                             while not audio_queue.empty():
                                                 try:
                                                     audio_queue.get_nowait()
@@ -456,6 +476,7 @@ class GeminiLiveProvider:
                                     self.is_recording_allowed = False
                                     if not self.is_speaking:
                                         self.is_speaking = True
+                                        self._jaw_turn_id += 1
                                         current_model_text.clear()
                                         await self.event_bus.publish(StateChangeEvent(old_state="LISTENING", new_state="SPEAKING", reason="Gemini Live Response"))
                                         await self.event_bus.publish(TTSPlaybackEvent(status="started"))
@@ -468,7 +489,7 @@ class GeminiLiveProvider:
                                     for part in model_turn.parts:
                                         if hasattr(part, "text") and part.text:
                                             current_model_text.append(part.text)
-                                            self.logger.info(f"🤖 [NILA SPEAKING] \"{part.text}\"")
+                                            self.logger.info(f"🤖 [TORRES SPEAKING] \"{part.text}\"")
                                             await self.event_bus.publish(BrainLLMResponseEvent(text=part.text))
                                         if part.inline_data:
                                             audio_bytes = part.inline_data.data
@@ -491,10 +512,15 @@ class GeminiLiveProvider:
                                     if current_model_text:
                                         full_spoken_text = "".join(current_model_text)
                                         print("\n" + "="*60)
-                                        print("🤖 NILA RESPONDED & SPOKE:")
+                                        print("🤖 TORRES RESPONDED & SPOKE:")
                                         print(f"\"{full_spoken_text}\"")
                                         print("="*60 + "\n")
                                         current_model_text.clear()
+
+                                    # Allow delayed jaw movements to finish matching Bluetooth playback
+                                    if self.jaw_sync_delay > 0:
+                                        await asyncio.sleep(self.jaw_sync_delay)
+
                                     self.serial_ctrl.send_jaw_intensity(0)
                                     try:
                                         from src.services.hardware.jaw_controller import JawController
@@ -521,12 +547,12 @@ class GeminiLiveProvider:
                             self.logger.info(f"ℹ️ Gemini Live audio receiver session ended: {rx_err}")
                             break
 
-                # Send initial turn to trigger Nila's startup greeting ONLY once on boot
+                # Send initial turn to trigger Torres's startup greeting ONLY once on boot
                 if not self.has_greeted_on_boot:
                     try:
                         self.has_greeted_on_boot = True
                         self.is_recording_allowed = False
-                        greeting_prompt = "Hello! Briefly welcome the user in 1 short sentence as Nila."
+                        greeting_prompt = "Hello! Welcome the doctors and visitors to IMACON 2026 in 1 short, warm, professional sentence as Torres, built by Robuverse."
                         initial_turn = types.Content(
                             role="user",
                             parts=[types.Part.from_text(text=greeting_prompt)]
